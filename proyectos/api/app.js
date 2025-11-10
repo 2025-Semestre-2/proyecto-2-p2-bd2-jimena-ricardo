@@ -176,6 +176,45 @@ app.get('/stock-details', async (req, res) => {
   res.json(await executeProcedure('getProductDetails', inputParams, []));
 });
 
+app.get('/invoice-full-details', async (req, res) => {
+  const { invoiceId } = req.query;
+  const inputParams = [['InvoiceID', sql.Int, invoiceId]];
+  
+  try {
+    const result = await executeProcedure('sp_GetVentaDetalles', inputParams, []);
+    
+    // El stored procedure devuelve dos resultsets
+    // El primer resultset es el encabezado, el segundo es el detalle
+    if (result && result.length > 0) {
+      // Encontrar donde termina el primer resultset (encabezado) y empieza el segundo (detalle)
+      let encabezado = [];
+      let detalles = [];
+      let foundBreak = false;
+      
+      for (let row of result) {
+        if (row.numero_factura !== undefined && !foundBreak) {
+          encabezado.push(row);
+        } else {
+          foundBreak = true;
+          if (row.nombre_producto !== undefined) {
+            detalles.push(row);
+          }
+        }
+      }
+      
+      res.json({
+        encabezado: encabezado[0] || {}, // Tomamos el primer elemento del encabezado
+        detalles: detalles
+      });
+    } else {
+      res.json({ encabezado: {}, detalles: [] });
+    }
+  } catch (error) {
+    console.error('Error fetching invoice full details:', error);
+    res.status(500).json({ error: 'Error al cargar los detalles completos de la factura' });
+  }
+});
+
 // ---------- FILTERS ROUTES ----------
 
 app.get('/filters/customers', async (_, res) => {

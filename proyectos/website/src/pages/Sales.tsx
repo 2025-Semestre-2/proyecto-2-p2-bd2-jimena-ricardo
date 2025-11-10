@@ -22,23 +22,24 @@ interface Invoice {
 }
 
 interface InvoiceHeader {
-  InvoiceID: number;
-  CustomerName: string;
-  DeliveryMethod: string;
-  OrderNumber: string;
-  ContactPerson: string;
-  SalesPerson: string;
-  InvoiceDate: string;
-  DeliveryInstructions: string;
+  numero_factura: number;
+  nombre_cliente: string;
+  metodo_entrega: string;
+  numero_orden: string;
+  persona_contacto: string;
+  nombre_vendedor: string;
+  fecha_factura: string;
+  instrucciones_entrega: string;
 }
 
 interface InvoiceLine {
-  ProductName: string;
-  Quantity: number;
-  UnitPrice: number;
-  TaxRate: number;
-  TaxAmount: number;
-  Total: number;
+  nombre_producto: string;
+  cantidad: number;
+  precio_unitario: number;
+  impuesto_aplicado: number;
+  monto_impuesto: number;
+  ganancia_linea: number;
+  total_linea: number;
 }
 
 interface InvoiceDetails {
@@ -98,16 +99,12 @@ export default function Sales() {
     try {
       setFiltrosLoading(true);
       
-      // Cargar métodos de entrega desde la API
-      const response = await fetch('http://localhost:3000/customer-delivery-methods');
+      // Cargar métodos de entrega desde el nuevo endpoint de filtros
+      const response = await fetch('http://localhost:3000/filters/sales');
       const metodosData = await response.json();
       
-      // Transformar datos a formato Filtro
-      const metodosFiltro = metodosData.map((met: any) => ({
-        tipo_filtro: 'metodos_entrega',
-        valor: met.DeliveryMethodName,
-        etiqueta: met.DeliveryMethodName
-      }));
+      // Filtrar solo los métodos de entrega
+      const metodosFiltro = metodosData.filter((filtro: any) => filtro.tipo_filtro === 'metodos_entrega');
       
       setMetodosEntrega(metodosFiltro);
       
@@ -168,20 +165,16 @@ export default function Sales() {
     try {
       setError(null);
       
-      // Obtener encabezado de la factura
-      const headerResponse = await fetch(`http://localhost:3000/invoice-header?invoiceId=${id}`);
-      if (!headerResponse.ok) throw new Error(`Error ${headerResponse.status}`);
-      const encabezado = await headerResponse.json();
+      // Usar el nuevo endpoint que llama al stored procedure sp_GetVentaDetalles
+      const response = await fetch(`http://localhost:3000/invoice-full-details?invoiceId=${id}`);
       
-      // Obtener líneas de la factura
-      const linesResponse = await fetch(`http://localhost:3000/invoice-lines?invoiceId=${id}`);
-      if (!linesResponse.ok) throw new Error(`Error ${linesResponse.status}`);
-      const detalles = await linesResponse.json();
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
       
-      setSelectedInvoice({
-        encabezado: encabezado[0], // La API devuelve un array, tomamos el primer elemento
-        detalles: detalles
-      });
+      const data = await response.json();
+      setSelectedInvoice(data);
+      
     } catch (err) {
       console.error('Error fetching invoice details:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los detalles de la factura');
@@ -235,7 +228,7 @@ export default function Sales() {
 
   // Calcular total de la factura
   const calculateInvoiceTotal = (lines: InvoiceLine[]) => {
-    return lines.reduce((total, line) => total + line.Total, 0);
+    return lines.reduce((total, line) => total + line.total_linea, 0);
   };
 
   return (
@@ -460,7 +453,7 @@ export default function Sales() {
       <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Detalles de la Factura #{selectedInvoice?.encabezado.InvoiceID}</DialogTitle>
+            <DialogTitle>Detalles de la Factura #{selectedInvoice?.encabezado.numero_factura}</DialogTitle>
           </DialogHeader>
           {selectedInvoice && (
             <div className="space-y-6">
@@ -469,15 +462,15 @@ export default function Sales() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Número de Factura</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.InvoiceID}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.numero_factura}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Nombre del Cliente</p>
                     <button 
-                      onClick={() => navigateToCustomer(selectedInvoice.encabezado.CustomerName)}
+                      onClick={() => navigateToCustomer(selectedInvoice.encabezado.nombre_cliente)}
                       className="font-medium text-primary hover:underline inline-flex items-center gap-1 transition-colors"
                     >
-                      {selectedInvoice.encabezado.CustomerName}
+                      {selectedInvoice.encabezado.nombre_cliente}
                       <ExternalLink className="h-3 w-3" />
                     </button>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -486,27 +479,27 @@ export default function Sales() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Método de Entrega</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.DeliveryMethod}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.metodo_entrega}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Número de Orden</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.OrderNumber || "N/A"}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.numero_orden || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Persona de Contacto</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.ContactPerson}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.persona_contacto}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Nombre del Vendedor</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.SalesPerson}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.nombre_vendedor}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Fecha de la Factura</p>
-                    <p className="font-medium">{new Date(selectedInvoice.encabezado.InvoiceDate).toLocaleDateString()}</p>
+                    <p className="font-medium">{new Date(selectedInvoice.encabezado.fecha_factura).toLocaleDateString()}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Instrucciones de Entrega</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.DeliveryInstructions || "N/A"}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.instrucciones_entrega || "N/A"}</p>
                   </div>
                 </div>
               </div>
@@ -526,6 +519,7 @@ export default function Sales() {
                       <TableHead>Precio Unit.</TableHead>
                       <TableHead>Impuesto</TableHead>
                       <TableHead>Monto Imp.</TableHead>
+                      <TableHead>Ganancia</TableHead>
                       <TableHead>Total Línea</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -534,22 +528,23 @@ export default function Sales() {
                       <TableRow key={index}>
                         <TableCell>
                           <button 
-                            onClick={() => navigateToInventory(line.ProductName)}
+                            onClick={() => navigateToInventory(line.nombre_producto)}
                             className="text-primary hover:underline inline-flex items-center gap-1 transition-colors"
                           >
-                            {line.ProductName}
+                            {line.nombre_producto}
                             <ExternalLink className="h-3 w-3" />
                           </button>
                         </TableCell>
-                        <TableCell>{line.Quantity}</TableCell>
-                        <TableCell>${line.UnitPrice.toFixed(2)}</TableCell>
-                        <TableCell>{line.TaxRate}%</TableCell>
-                        <TableCell>${line.TaxAmount.toFixed(2)}</TableCell>
-                        <TableCell className="font-medium">${line.Total.toFixed(2)}</TableCell>
+                        <TableCell>{line.cantidad}</TableCell>
+                        <TableCell>${line.precio_unitario.toFixed(2)}</TableCell>
+                        <TableCell>{line.impuesto_aplicado}%</TableCell>
+                        <TableCell>${line.monto_impuesto.toFixed(2)}</TableCell>
+                        <TableCell>${line.ganancia_linea.toFixed(2)}</TableCell>
+                        <TableCell className="font-medium">${line.total_linea.toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="bg-muted/50">
-                      <TableCell colSpan={5} className="text-right font-semibold text-lg">
+                      <TableCell colSpan={6} className="text-right font-semibold text-lg">
                         Total de la Factura:
                       </TableCell>
                       <TableCell className="font-bold text-lg text-primary">

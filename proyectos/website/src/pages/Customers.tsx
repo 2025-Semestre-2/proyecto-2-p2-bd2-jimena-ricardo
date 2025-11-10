@@ -90,29 +90,18 @@ export default function Customers() {
     try {
       setFiltrosLoading(true);
       
-      // Cargar categorías
-      const catResponse = await fetch('http://localhost:3000/customer-categories');
-      const categoriasData = await catResponse.json();
+      // Cargar todos los filtros de clientes desde el nuevo endpoint
+      const response = await fetch('http://localhost:3000/filters/customers');
       
-      // Cargar métodos de entrega
-      const metResponse = await fetch('http://localhost:3000/customer-delivery-methods');
-      const metodosData = await metResponse.json();
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
       
-      // Transformar datos a formato Filtro
-      const categoriasFiltro: Filtro[] = categoriasData.map((cat: any) => ({
-        tipo_filtro: 'categorias',
-        valor: cat.CategoryName,
-        etiqueta: cat.CategoryName
-      }));
+      const data: Filtro[] = await response.json();
       
-      const metodosFiltro: Filtro[] = metodosData.map((met: any) => ({
-        tipo_filtro: 'metodos_entrega',
-        valor: met.DeliveryMethodName,
-        etiqueta: met.DeliveryMethodName
-      }));
-      
-      setCategorias(categoriasFiltro);
-      setMetodosEntrega(metodosFiltro);
+      // Separar los filtros por tipo
+      setCategorias(data.filter(filtro => filtro.tipo_filtro === 'categorias'));
+      setMetodosEntrega(data.filter(filtro => filtro.tipo_filtro === 'metodos_entrega'));
       
     } catch (err) {
       console.error('Error cargando filtros:', err);

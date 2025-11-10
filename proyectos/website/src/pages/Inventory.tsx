@@ -127,18 +127,17 @@ export default function Inventory() {
     try {
       setFiltrosLoading(true);
       
-      const gruposEstaticos: Filtro[] = [
-        { tipo_filtro: 'grupos', valor: 'Audio Video', etiqueta: 'Audio Video' },
-        { tipo_filtro: 'grupos', valor: 'Clothing', etiqueta: 'Ropa' },
-        { tipo_filtro: 'grupos', valor: 'Computing', etiqueta: 'Computación' },
-        { tipo_filtro: 'grupos', valor: 'Fashion', etiqueta: 'Moda' },
-        { tipo_filtro: 'grupos', valor: 'Home Appliances', etiqueta: 'Electrodomésticos' },
-        { tipo_filtro: 'grupos', valor: 'Packaging Materials', etiqueta: 'Materiales de Empaque' },
-        { tipo_filtro: 'grupos', valor: 'Novelty Items', etiqueta: 'Artículos Novedosos' },
-        { tipo_filtro: 'grupos', valor: 'Toys', etiqueta: 'Juguetes' }
-      ];
+      // Cargar todos los filtros de inventarios desde el nuevo endpoint
+      const response = await fetch('http://localhost:3000/filters/inventory');
       
-      setGrupos(gruposEstaticos);
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const data: Filtro[] = await response.json();
+      
+      // SOLO cargar grupos (quitamos marcas y colores)
+      setGrupos(data.filter(filtro => filtro.tipo_filtro === 'grupos'));
       
     } catch (err) {
       console.error('Error cargando filtros:', err);

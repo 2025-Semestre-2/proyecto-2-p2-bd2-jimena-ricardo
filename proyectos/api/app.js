@@ -93,27 +93,47 @@ app.get('/invoices-list', async (req, res) => {
 // ---------- STATISTICS ROUTES ----------
 
 app.get('/purchase-order-stat', async (req, res) => {
-  const { pageNumber, pageSize } = req.query;
-  const inputParams = [['pageNumber', sql.Int, pageNumber], ['pageSize', sql.Int, pageSize]];
+  const { pageNumber, pageSize, filtro } = req.query;
+  const inputParams = [
+    ['pageNumber', sql.Int, pageNumber], 
+    ['pageSize', sql.Int, pageSize],
+    ['Filtro', sql.NVarChar(100), filtro || null]
+  ];
   res.json(await executeProcedure('GetPurchaseOrderStat', inputParams, []));
 });
 
 app.get('/invoice-stat', async (req, res) => {
-  const { pageNumber, pageSize } = req.query;
-  const inputParams = [['pageNumber', sql.Int, pageNumber], ['pageSize', sql.Int, pageSize]];
+  const { pageNumber, pageSize, filtro } = req.query;
+  const inputParams = [
+    ['pageNumber', sql.Int, pageNumber], 
+    ['pageSize', sql.Int, pageSize],
+    ['Filtro', sql.NVarChar(100), filtro || null]
+  ];
   res.json(await executeProcedure('GetInvoiceStat', inputParams, []));
 });
 
-app.get('/products-stat', async (_, res) => {
-  res.json(await executeProcedure('GetTop5ProductsStat', [], []));
+app.get('/products-stat', async (req, res) => {
+  const { anio } = req.query;
+  const inputParams = [['Anio', sql.Int, anio || 2023]];
+  res.json(await executeProcedure('GetTop5ProductsStat', inputParams, []));
 });
 
-app.get('/customers-stat', async (_, res) => {
-  res.json(await executeProcedure('GetTop5CustomersStat', [], []));
+app.get('/customers-stat', async (req, res) => {
+  const { anioInicio, anioFin } = req.query;
+  const inputParams = [
+    ['AnioInicio', sql.Int, anioInicio || 2020],
+    ['AnioFin', sql.Int, anioFin || 2023]
+  ];
+  res.json(await executeProcedure('GetTop5CustomersStat', inputParams, []));
 });
 
-app.get('/suppliers-stat', async (_, res) => {
-  res.json(await executeProcedure('GetTop5SuppliersStat', [], []));
+app.get('/suppliers-stat', async (req, res) => {
+  const { anioInicio, anioFin } = req.query;
+  const inputParams = [
+    ['AnioInicio', sql.Int, anioInicio || 2020],
+    ['AnioFin', sql.Int, anioFin || 2023]
+  ];
+  res.json(await executeProcedure('GetTop5SuppliersStat', inputParams, []));
 });
 
 // ---------- CATALOG ROUTES ----------
@@ -124,6 +144,16 @@ app.get('/customer-categories', async (_, res) => {
 
 app.get('/customer-delivery-methods', async (_, res) => {
   res.json(await executeProcedure('GetCustomerDeliveryMethods', [], []));
+});
+
+app.get('/delivery-methods', async (_, res) => {
+  try {
+    const result = await executeProcedure('sp_GetMetodosEntrega', [], []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching delivery methods:', error);
+    res.status(500).json({ error: 'Error al cargar los métodos de entrega' });
+  }
 });
 
 // ---------- DETAILS ROUTES ----------
@@ -144,6 +174,90 @@ app.get('/stock-details', async (req, res) => {
   const { productId } = req.query;
   const inputParams = [['productID', sql.Int, productId]];
   res.json(await executeProcedure('getProductDetails', inputParams, []));
+});
+
+// ---------- FILTERS ROUTES ----------
+
+app.get('/filters/customers', async (_, res) => {
+  try {
+    const result = await executeProcedure('sp_GetFiltrosClientes', [], []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching customer filters:', error);
+    res.status(500).json({ error: 'Error al cargar los filtros de clientes' });
+  }
+});
+
+app.get('/filters/suppliers', async (_, res) => {
+  try {
+    const result = await executeProcedure('sp_GetFiltrosProveedores', [], []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching supplier filters:', error);
+    res.status(500).json({ error: 'Error al cargar los filtros de proveedores' });
+  }
+});
+
+app.get('/filters/inventory', async (_, res) => {
+  try {
+    const result = await executeProcedure('sp_GetFiltrosInventarios', [], []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching inventory filters:', error);
+    res.status(500).json({ error: 'Error al cargar los filtros de inventarios' });
+  }
+});
+
+app.get('/filters/sales', async (_, res) => {
+  try {
+    const result = await executeProcedure('sp_GetFiltrosVentas', [], []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching sales filters:', error);
+    res.status(500).json({ error: 'Error al cargar los filtros de ventas' });
+  }
+});
+
+app.get('/filters/statistics', async (_, res) => {
+  try {
+    const result = await executeProcedure('sp_GetFiltrosEstadisticas', [], []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching statistics filters:', error);
+    res.status(500).json({ error: 'Error al cargar los filtros de estadísticas' });
+  }
+});
+
+app.get('/available-years', async (req, res) => {
+  try {
+    const { modulo } = req.query;
+    const inputParams = modulo ? [['Modulo', sql.NVarChar(50), modulo]] : [];
+    const result = await executeProcedure('sp_GetAniosDisponibles', inputParams, []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching available years:', error);
+    res.status(500).json({ error: 'Error al cargar los años disponibles' });
+  }
+});
+
+app.get('/cities', async (_, res) => {
+  try {
+    const result = await executeProcedure('sp_GetCiudades', [], []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching cities:', error);
+    res.status(500).json({ error: 'Error al cargar las ciudades' });
+  }
+});
+
+app.get('/delivery-methods', async (_, res) => {
+  try {
+    const result = await executeProcedure('sp_GetMetodosEntrega', [], []);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching delivery methods:', error);
+    res.status(500).json({ error: 'Error al cargar los métodos de entrega' });
+  }
 });
 
 // Start the server and have it listen on the specified port

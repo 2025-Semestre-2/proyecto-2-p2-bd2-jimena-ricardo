@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RotateCcw, ExternalLink, MapPin, Navigation } from "lucide-react";
+import { Search, RotateCcw, ExternalLink, MapPin, Navigation, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 // Interfaces para tipado
@@ -55,10 +55,19 @@ export default function Suppliers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
+  // Estados para la paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [tamanoPagina, setTamanoPagina] = useState(50);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+  const [cargandoTotal, setCargandoTotal] = useState(false);
+  
   // Estados para los filtros dinámicos
   const [categorias, setCategorias] = useState<Filtro[]>([]);
   const [metodosEntrega, setMetodosEntrega] = useState<Filtro[]>([]);
   const [filtrosLoading, setFiltrosLoading] = useState(true);
+
+  // Calcular total de páginas
+  const totalPaginas = Math.ceil(totalRegistros / tamanoPagina);
 
   // Efecto para cargar datos iniciales y manejar navegación
   useEffect(() => {
@@ -80,6 +89,12 @@ export default function Suppliers() {
     fetchFiltros();
   }, [location.state]);
 
+  // Efecto para cargar el total cuando cambian los filtros
+  useEffect(() => {
+    if (!loading) {
+      fetchTotalProveedores();
+    }
+  }, [searchTerm, categoryFilter, deliveryMethodFilter]);
 
   // Función para cargar los filtros dinámicos
   const fetchFiltros = async () => {
@@ -110,6 +125,8 @@ export default function Suppliers() {
       setError(null);
       
       const params = new URLSearchParams();
+      params.append('pagina', paginaActual.toString());
+      params.append('tamanoPagina', tamanoPagina.toString());
       if (nombre) params.append('nombre', nombre);
       if (categoria && categoria !== 'all') params.append('categoria', categoria);
       if (metodoEntrega && metodoEntrega !== 'all') params.append('metodoEntrega', metodoEntrega);
@@ -129,6 +146,32 @@ export default function Suppliers() {
       setError(err instanceof Error ? err.message : 'Error al cargar los proveedores');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTotalProveedores = async () => {
+    try {
+      setCargandoTotal(true);
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('nombre', searchTerm);
+      if (categoryFilter && categoryFilter !== 'all') params.append('categoria', categoryFilter);
+      if (deliveryMethodFilter && deliveryMethodFilter !== 'all') params.append('metodoEntrega', deliveryMethodFilter);
+      
+      const url = `http://localhost:3000/api/proveedores/total?${params.toString()}`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setTotalRegistros(data.Total || 0);
+    } catch (err) {
+      console.error('Error fetching total suppliers:', err);
+      setTotalRegistros(0);
+    } finally {
+      setCargandoTotal(false);
     }
   };
 
@@ -156,6 +199,7 @@ export default function Suppliers() {
   };
 
   const handleSearch = () => {
+    setPaginaActual(1); // Resetear a primera página al buscar
     fetchSuppliers(searchTerm, categoryFilter, deliveryMethodFilter);
   };
 
@@ -163,12 +207,38 @@ export default function Suppliers() {
     setSearchTerm("");
     setCategoryFilter("");
     setDeliveryMethodFilter("");
+    setPaginaActual(1);
     fetchSuppliers();
   };
 
   const handleViewDetails = (supplier: Supplier) => {
     fetchSupplierDetails(supplier.id);
   };
+
+  // Funciones de navegación de paginación
+  const irAPagina = (pagina: number) => {
+    setPaginaActual(pagina);
+    fetchSuppliers(searchTerm, categoryFilter, deliveryMethodFilter);
+  };
+
+  const paginaAnterior = () => {
+    if (paginaActual > 1) {
+      irAPagina(paginaActual - 1);
+    }
+  };
+
+  const paginaSiguiente = () => {
+    if (paginaActual < totalPaginas) {
+      irAPagina(paginaActual + 1);
+    }
+  };
+
+  // Efecto para cargar datos cuando cambia la página
+  useEffect(() => {
+    if (!loading) {
+      fetchSuppliers(searchTerm, categoryFilter, deliveryMethodFilter);
+    }
+  }, [paginaActual, tamanoPagina]);
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -254,6 +324,41 @@ export default function Suppliers() {
         </Button>
       </div>
 
+      {/* Controles de paginación superiores */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Mostrar:</span>
+            <Select 
+              value={tamanoPagina.toString()} 
+              onValueChange={(value) => {
+                setTamanoPagina(Number(value));
+                setPaginaActual(1);
+              }}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">por página</span>
+          </div>
+        </div>
+        
+        <div className="text-sm text-muted-foreground">
+          {cargandoTotal ? (
+            "Cargando..."
+          ) : (
+            `Total: ${totalRegistros} proveedor${totalRegistros !== 1 ? 'es' : ''}`
+          )}
+        </div>
+      </div>
+
       <Card className="overflow-hidden shadow-lg animate-fade-in" style={{ animationDelay: '200ms' }}>
         {loading ? (
           <div className="p-8 text-center">
@@ -264,35 +369,95 @@ export default function Suppliers() {
             <p>No se encontraron proveedores</p>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre del Proveedor</TableHead>
-                <TableHead>Categoría</TableHead>
-                <TableHead>Método de Entrega</TableHead>
-                <TableHead>Acción</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {suppliers.map((supplier) => (
-                <TableRow key={supplier.id}>
-                  <TableCell className="font-medium">{supplier.nombre}</TableCell>
-                  <TableCell>{supplier.categoria}</TableCell>
-                  <TableCell>{supplier.metodo_entrega}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleViewDetails(supplier)}
-                      disabled={loading}
-                    >
-                      Ver Detalles
-                    </Button>
-                  </TableCell>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre del Proveedor</TableHead>
+                  <TableHead>Categoría</TableHead>
+                  <TableHead>Método de Entrega</TableHead>
+                  <TableHead>Acción</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {suppliers.map((supplier) => (
+                  <TableRow key={supplier.id}>
+                    <TableCell className="font-medium">{supplier.nombre}</TableCell>
+                    <TableCell>{supplier.categoria}</TableCell>
+                    <TableCell>{supplier.metodo_entrega}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewDetails(supplier)}
+                        disabled={loading}
+                      >
+                        Ver Detalles
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            
+            {/* Controles de paginación inferiores */}
+            <div className="flex items-center justify-between p-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Página {paginaActual} de {totalPaginas}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={paginaAnterior}
+                  disabled={paginaActual <= 1 || loading}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                
+                <div className="flex gap-1">
+                  {/* Mostrar números de página */}
+                  {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                    let paginaNumero;
+                    if (totalPaginas <= 5) {
+                      paginaNumero = i + 1;
+                    } else if (paginaActual <= 3) {
+                      paginaNumero = i + 1;
+                    } else if (paginaActual >= totalPaginas - 2) {
+                      paginaNumero = totalPaginas - 4 + i;
+                    } else {
+                      paginaNumero = paginaActual - 2 + i;
+                    }
+                    
+                    return (
+                      <Button
+                        key={paginaNumero}
+                        variant={paginaActual === paginaNumero ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => irAPagina(paginaNumero)}
+                        disabled={loading}
+                        className="w-8 h-8 p-0"
+                      >
+                        {paginaNumero}
+                      </Button>
+                    );
+                  })}
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={paginaSiguiente}
+                  disabled={paginaActual >= totalPaginas || loading}
+                >
+                  Siguiente
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </Card>
 

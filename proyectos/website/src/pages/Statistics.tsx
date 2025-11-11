@@ -7,39 +7,51 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, RotateCcw } from "lucide-react";
 
-// Interfaces para tipado basadas en los stored procedures actualizados
+// Interfaces para tipado
 interface CompraProveedor {
-  CategoryName: string;
-  SupplierName: string;
-  Minimum: number;
-  Maximum: number;
-  Average: number;
+  proveedor: string;
+  categoria: string;
+  monto_minimo: number;
+  monto_maximo: number;
+  compra_promedio: number;
 }
 
 interface VentaCliente {
-  CategoryName: string;
-  CustomerName: string;
-  Minimum: number;
-  Maximum: number;
-  Average: number;
+  cliente: string;
+  categoria: string;
+  monto_minimo: number;
+  monto_maximo: number;
+  venta_promedio: number;
 }
 
 interface TopProducto {
-  Year: number;
-  ProductName: string;
-  Total: number;
+  producto: string;
+  anio: number;
+  ganancia_total: number;
+  ranking: number;
 }
 
 interface TopCliente {
-  Year: number;
-  CustomerName: string;
-  Total: number;
+  cliente: string;
+  anio: number;
+  cantidad_facturas: number;
+  monto_total: number;
+  ranking: number;
 }
 
 interface TopProveedor {
-  Year: number;
-  SupplierName: string;
-  Total: number;
+  proveedor: string;
+  anio: number;
+  cantidad_ordenes: number;
+  monto_total: number;
+  ranking: number;
+}
+
+// Interface para los filtros dinámicos
+interface Filtro {
+  tipo_filtro: string;
+  valor: string;
+  etiqueta: string;
 }
 
 export default function Statistics() {
@@ -52,10 +64,6 @@ export default function Statistics() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Estados para paginación
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
-
   // Estados para los datos
   const [comprasProveedores, setComprasProveedores] = useState<CompraProveedor[]>([]);
   const [ventasClientes, setVentasClientes] = useState<VentaCliente[]>([]);
@@ -63,27 +71,35 @@ export default function Statistics() {
   const [topClientes, setTopClientes] = useState<TopCliente[]>([]);
   const [topProveedores, setTopProveedores] = useState<TopProveedor[]>([]);
 
-  // Estados para años disponibles
-  const [years, setYears] = useState<{value: string, label: string}[]>([]);
+  // Estados para los filtros dinámicos
+  const [aniosProductos, setAniosProductos] = useState<Filtro[]>([]);
+  const [aniosRango, setAniosRango] = useState<Filtro[]>([]);
+  const [categoriasProveedores, setCategoriasProveedores] = useState<Filtro[]>([]);
+  const [filtrosLoading, setFiltrosLoading] = useState(true);
 
-  // Generar años disponibles
-  useEffect(() => {
-    const yearsList = [];
-    for (let year = 2013; year <= 2026; year++) {
-      yearsList.push({
-        value: year.toString(),
-        label: year.toString()
-      });
+  // Cargar filtros dinámicos
+  const fetchFiltros = async () => {
+    try {
+      setFiltrosLoading(true);
+      const response = await fetch('http://localhost:3000/api/filtros/estadisticas');
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const data: Filtro[] = await response.json();
+      
+      // Separar los filtros por tipo (quitamos categorias_clientes)
+      setAniosProductos(data.filter(filtro => filtro.tipo_filtro === 'anios_productos'));
+      setAniosRango(data.filter(filtro => filtro.tipo_filtro === 'anios_rango'));
+      setCategoriasProveedores(data.filter(filtro => filtro.tipo_filtro === 'categorias_proveedores'));
+      
+    } catch (err) {
+      console.error('Error cargando filtros:', err);
+    } finally {
+      setFiltrosLoading(false);
     }
-    setYears(yearsList);
-    
-    // Cargar datos iniciales
-    fetchComprasProveedores();
-    fetchVentasClientes();
-    fetchTopProductos();
-    fetchTopClientes();
-    fetchTopProveedores();
-  }, []);
+  };
 
   // Función genérica para fetch
   const fetchData = async (url: string) => {
@@ -107,50 +123,48 @@ export default function Statistics() {
   };
 
   // Estadísticas de compras a proveedores
-  const fetchComprasProveedores = async (page: number = 1, size: number = 50) => {
+  const fetchComprasProveedores = async () => {
     const filtro = supplierFilter || categoryFilter ? `${supplierFilter} ${categoryFilter}`.trim() : undefined;
-    const params = new URLSearchParams({
-      pageNumber: page.toString(),
-      pageSize: size.toString(),
-      ...(filtro && { filtro })
-    });
-    
-    const data = await fetchData(`http://localhost:3000/purchase-order-stat?${params.toString()}`);
+    const params = filtro ? `?filtro=${encodeURIComponent(filtro)}` : '';
+    const data = await fetchData(`http://localhost:3000/api/estadisticas/compras-proveedores${params}`);
     setComprasProveedores(data);
-    setPageNumber(page);
-    setPageSize(size);
   };
 
   // Estadísticas de ventas a clientes
-  const fetchVentasClientes = async (page: number = 1, size: number = 50) => {
+  const fetchVentasClientes = async () => {
     const filtro = customerFilter || categoryFilter ? `${customerFilter} ${categoryFilter}`.trim() : undefined;
-    const params = new URLSearchParams({
-      pageNumber: page.toString(),
-      pageSize: size.toString(),
-      ...(filtro && { filtro })
-    });
-    
-    const data = await fetchData(`http://localhost:3000/invoice-stat?${params.toString()}`);
+    const params = filtro ? `?filtro=${encodeURIComponent(filtro)}` : '';
+    const data = await fetchData(`http://localhost:3000/api/estadisticas/ventas-clientes${params}`);
     setVentasClientes(data);
   };
 
   // Top 5 productos
   const fetchTopProductos = async () => {
-    const data = await fetchData(`http://localhost:3000/products-stat?anio=${yearFilter}`);
+    const data = await fetchData(`http://localhost:3000/api/estadisticas/top5-productos?anio=${yearFilter}`);
     setTopProductos(data);
   };
 
   // Top 5 clientes
   const fetchTopClientes = async () => {
-    const data = await fetchData(`http://localhost:3000/customers-stat?anioInicio=${startYearFilter}&anioFin=${endYearFilter}`);
+    const data = await fetchData(`http://localhost:3000/api/estadisticas/top5-clientes?anioInicio=${startYearFilter}&anioFin=${endYearFilter}`);
     setTopClientes(data);
   };
 
   // Top 5 proveedores
   const fetchTopProveedores = async () => {
-    const data = await fetchData(`http://localhost:3000/suppliers-stat?anioInicio=${startYearFilter}&anioFin=${endYearFilter}`);
+    const data = await fetchData(`http://localhost:3000/api/estadisticas/top5-proveedores?anioInicio=${startYearFilter}&anioFin=${endYearFilter}`);
     setTopProveedores(data);
   };
+
+  // Cargar datos iniciales y filtros
+  useEffect(() => {
+    fetchFiltros();
+    fetchComprasProveedores();
+    fetchVentasClientes();
+    fetchTopProductos();
+    fetchTopClientes();
+    fetchTopProveedores();
+  }, []);
 
   const handleReset = () => {
     setSupplierFilter("");
@@ -159,28 +173,18 @@ export default function Statistics() {
     setYearFilter("2023");
     setStartYearFilter("2020");
     setEndYearFilter("2023");
-    setPageNumber(1);
     
     // Recargar datos sin filtros
-    fetchComprasProveedores(1, pageSize);
-    fetchVentasClientes(1, pageSize);
+    fetchComprasProveedores();
+    fetchVentasClientes();
     fetchTopProductos();
     fetchTopClientes();
     fetchTopProveedores();
   };
 
-  // Función para cambiar de página
-  const handlePageChange = (newPage: number) => {
-    fetchComprasProveedores(newPage, pageSize);
-  };
-
-  // Separar filas de totales por categoría y detalle por proveedor
-  const getCategoriaTotals = (data: CompraProveedor[]) => {
-    return data.filter(item => item.CategoryName === 'TOTAL CATEGORIA');
-  };
-
-  const getProveedorDetails = (data: CompraProveedor[]) => {
-    return data.filter(item => item.CategoryName !== 'TOTAL CATEGORIA' && item.SupplierName !== 'TOTAL');
+  // Filtrar filas que no son totales
+  const filterNonTotalRows = (data: any[], field: string) => {
+    return data.filter(item => !item[field].includes('TOTAL'));
   };
 
   return (
@@ -208,117 +212,77 @@ export default function Statistics() {
         <TabsContent value="suppliers" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Estadísticas de Compras a Proveedores</CardTitle>
+              <CardTitle>Montos de Compras a Proveedores</CardTitle>
               <CardDescription>
-                Montos mínimos, máximos y promedio de compras agrupados por categoría y proveedor
+                Montos más altos, bajos y compra promedio agrupados por proveedor y categoría
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <Card className="p-4">
-                  <label className="text-sm font-medium mb-2 block">Filtrar por proveedor</label>
+                  <label className="text-sm font-medium mb-2 block">Filtrar por nombre</label>
                   <Input 
-                    placeholder="Filtrar por proveedor..." 
+                    placeholder="Filtrar por nombre..." 
                     value={supplierFilter}
                     onChange={(e) => setSupplierFilter(e.target.value)}
                   />
                 </Card>
                 <Card className="p-4">
                   <label className="text-sm font-medium mb-2 block">Filtrar por categoría</label>
-                  <Input 
-                    placeholder="Filtrar por categoría..." 
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                  />
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter} disabled={filtrosLoading}>
+                    <SelectTrigger>
+                      {filtrosLoading ? (
+                        <SelectValue placeholder="Cargando categorías..." />
+                      ) : (
+                        <SelectValue placeholder="Todas las categorías" />
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las categorías</SelectItem>
+                      {categoriasProveedores.map((categoria) => (
+                        <SelectItem key={categoria.valor} value={categoria.valor}>
+                          {categoria.etiqueta}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {filtrosLoading && (
+                    <p className="text-xs text-muted-foreground mt-1">Cargando categorías...</p>
+                  )}
                 </Card>
               </div>
               <div className="flex gap-2 mb-4">
-                <Button onClick={() => fetchComprasProveedores(1, pageSize)} className="flex-1" disabled={loading}>
+                <Button onClick={fetchComprasProveedores} className="flex-1" disabled={loading || filtrosLoading}>
                   <Search className="h-4 w-4 mr-2" />
                   {loading ? "Buscando..." : "Buscar"}
                 </Button>
-                <Button variant="outline" onClick={handleReset} disabled={loading}>
+                <Button variant="outline" onClick={handleReset} disabled={loading || filtrosLoading}>
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Restaurar
                 </Button>
               </div>
-
-              {/* Totales por Categoría */}
-              <div className="mb-6">
-                <h3 className="font-semibold text-lg mb-3">Totales por Categoría</h3>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Proveedor</TableHead>
-                      <TableHead>Monto Mínimo</TableHead>
-                      <TableHead>Monto Máximo</TableHead>
-                      <TableHead>Promedio</TableHead>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Proveedor</TableHead>
+                    <TableHead>Categoría</TableHead>
+                    <TableHead>Monto Más Alto</TableHead>
+                    <TableHead>Monto Más Bajo</TableHead>
+                    <TableHead>Promedio</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filterNonTotalRows(comprasProveedores, 'proveedor').map((compra, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium">{compra.proveedor}</TableCell>
+                      <TableCell>{compra.categoria}</TableCell>
+                      <TableCell>${compra.monto_maximo?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell>${compra.monto_minimo?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell>${compra.compra_promedio?.toFixed(2) || "0.00"}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {getCategoriaTotals(comprasProveedores).map((total, index) => (
-                      <TableRow key={`total-${index}`} className="bg-muted/50">
-                        <TableCell className="font-medium text-primary">{total.SupplierName}</TableCell>
-                        <TableCell className="font-medium">${total.Minimum?.toFixed(2) || "0.00"}</TableCell>
-                        <TableCell className="font-medium">${total.Maximum?.toFixed(2) || "0.00"}</TableCell>
-                        <TableCell className="font-medium">${total.Average?.toFixed(2) || "0.00"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Detalle por Proveedor */}
-              <div>
-                <h3 className="font-semibold text-lg mb-3">Detalle por Proveedor</h3>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Categoría</TableHead>
-                      <TableHead>Proveedor</TableHead>
-                      <TableHead>Monto Mínimo</TableHead>
-                      <TableHead>Monto Máximo</TableHead>
-                      <TableHead>Promedio</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {getProveedorDetails(comprasProveedores).map((compra, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">{compra.CategoryName}</TableCell>
-                        <TableCell>{compra.SupplierName}</TableCell>
-                        <TableCell>${compra.Minimum?.toFixed(2) || "0.00"}</TableCell>
-                        <TableCell>${compra.Maximum?.toFixed(2) || "0.00"}</TableCell>
-                        <TableCell>${compra.Average?.toFixed(2) || "0.00"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                
-                {/* Paginación */}
-                <div className="flex justify-between items-center p-4 border-t">
-                  <div className="text-sm text-muted-foreground">
-                    Página {pageNumber} - Mostrando {comprasProveedores.length} registros
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(pageNumber - 1)}
-                      disabled={pageNumber === 1 || loading}
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(pageNumber + 1)}
-                      disabled={comprasProveedores.length < pageSize || loading}
-                    >
-                      Siguiente
-                    </Button>
-                  </div>
-                </div>
-              </div>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
@@ -326,9 +290,9 @@ export default function Statistics() {
         <TabsContent value="customers" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Estadísticas de Ventas a Clientes</CardTitle>
+              <CardTitle>Montos de Ventas a Clientes</CardTitle>
               <CardDescription>
-                Montos mínimos, máximos y promedio de ventas agrupados por categoría y cliente
+                Montos más altos, bajos y ventas promedio agrupados por cliente y categoría
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -339,6 +303,7 @@ export default function Statistics() {
                     placeholder="Filtrar por cliente..." 
                     value={customerFilter}
                     onChange={(e) => setCustomerFilter(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && fetchVentasClientes()}
                   />
                 </Card>
                 <Card className="p-4">
@@ -347,15 +312,16 @@ export default function Statistics() {
                     placeholder="Filtrar por categoría..." 
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && fetchVentasClientes()}
                   />
                 </Card>
               </div>
               <div className="flex gap-2 mb-4">
-                <Button onClick={() => fetchVentasClientes(1, pageSize)} className="flex-1" disabled={loading}>
+                <Button onClick={fetchVentasClientes} className="flex-1" disabled={loading || filtrosLoading}>
                   <Search className="h-4 w-4 mr-2" />
                   {loading ? "Buscando..." : "Buscar"}
                 </Button>
-                <Button variant="outline" onClick={handleReset} disabled={loading}>
+                <Button variant="outline" onClick={handleReset} disabled={loading || filtrosLoading}>
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Restaurar
                 </Button>
@@ -363,23 +329,21 @@ export default function Statistics() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Categoría</TableHead>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Monto Mínimo</TableHead>
-                    <TableHead>Monto Máximo</TableHead>
+                    <TableHead>Categoría</TableHead>
+                    <TableHead>Monto Más Alto</TableHead>
+                    <TableHead>Monto Más Bajo</TableHead>
                     <TableHead>Promedio</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {ventasClientes
-                    .filter(venta => venta.CategoryName !== 'TOTAL CATEGORIA' && venta.CustomerName !== 'TOTAL')
-                    .map((venta, index) => (
+                  {filterNonTotalRows(ventasClientes, 'cliente').map((venta, index) => (
                     <TableRow key={index}>
-                      <TableCell className="font-medium">{venta.CategoryName}</TableCell>
-                      <TableCell>{venta.CustomerName}</TableCell>
-                      <TableCell>${venta.Minimum?.toFixed(2) || "0.00"}</TableCell>
-                      <TableCell>${venta.Maximum?.toFixed(2) || "0.00"}</TableCell>
-                      <TableCell>${venta.Average?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell className="font-medium">{venta.cliente}</TableCell>
+                      <TableCell>{venta.categoria}</TableCell>
+                      <TableCell>${venta.monto_maximo?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell>${venta.monto_minimo?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell>${venta.venta_promedio?.toFixed(2) || "0.00"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -388,6 +352,7 @@ export default function Statistics() {
           </Card>
         </TabsContent>
 
+        {/* Los demás tabs se mantienen igual */}
         <TabsContent value="products" className="space-y-4">
           <Card>
             <CardHeader>
@@ -399,25 +364,32 @@ export default function Statistics() {
             <CardContent>
               <Card className="p-4 mb-4">
                 <label className="text-sm font-medium mb-2 block">Filtrar por año</label>
-                <Select value={yearFilter} onValueChange={setYearFilter}>
+                <Select value={yearFilter} onValueChange={setYearFilter} disabled={filtrosLoading}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar año" />
+                    {filtrosLoading ? (
+                      <SelectValue placeholder="Cargando años..." />
+                    ) : (
+                      <SelectValue placeholder="Seleccionar año" />
+                    )}
                   </SelectTrigger>
                   <SelectContent>
-                    {years.map((year) => (
-                      <SelectItem key={year.value} value={year.value}>
-                        {year.label}
+                    {aniosProductos.map((anio) => (
+                      <SelectItem key={anio.valor} value={anio.valor}>
+                        {anio.etiqueta}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {filtrosLoading && (
+                  <p className="text-xs text-muted-foreground mt-1">Cargando años...</p>
+                )}
               </Card>
               <div className="flex gap-2 mb-4">
-                <Button onClick={fetchTopProductos} className="flex-1" disabled={loading}>
+                <Button onClick={fetchTopProductos} className="flex-1" disabled={loading || filtrosLoading}>
                   <Search className="h-4 w-4 mr-2" />
                   {loading ? "Buscando..." : "Filtrar"}
                 </Button>
-                <Button variant="outline" onClick={handleReset} disabled={loading}>
+                <Button variant="outline" onClick={handleReset} disabled={loading || filtrosLoading}>
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Restaurar
                 </Button>
@@ -425,18 +397,20 @@ export default function Statistics() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Ranking</TableHead>
                     <TableHead>Producto</TableHead>
                     <TableHead>Año</TableHead>
                     <TableHead>Ganancia Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {topProductos.map((producto, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{producto.ProductName}</TableCell>
-                      <TableCell>{producto.Year}</TableCell>
+                  {topProductos.map((producto) => (
+                    <TableRow key={producto.ranking}>
+                      <TableCell className="font-medium">{producto.ranking}</TableCell>
+                      <TableCell>{producto.producto}</TableCell>
+                      <TableCell>{producto.anio}</TableCell>
                       <TableCell className="text-green-600 font-medium">
-                        ${producto.Total?.toFixed(2) || "0.00"}
+                        ${producto.ganancia_total?.toFixed(2) || "0.00"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -449,50 +423,64 @@ export default function Statistics() {
         <TabsContent value="top-customers" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Top 5 Clientes</CardTitle>
+              <CardTitle>Top 5 Clientes con Más Facturas</CardTitle>
               <CardDescription>
-                Clientes ordenados por monto total facturado
+                Clientes ordenados por cantidad de facturas y monto total facturado
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <Card className="p-4">
                   <label className="text-sm font-medium mb-2 block">Año Inicio</label>
-                  <Select value={startYearFilter} onValueChange={setStartYearFilter}>
+                  <Select value={startYearFilter} onValueChange={setStartYearFilter} disabled={filtrosLoading}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Año inicio" />
+                      {filtrosLoading ? (
+                        <SelectValue placeholder="Cargando años..." />
+                      ) : (
+                        <SelectValue placeholder="Año inicio" />
+                      )}
                     </SelectTrigger>
                     <SelectContent>
-                      {years.map((year) => (
-                        <SelectItem key={year.value} value={year.value}>
-                          {year.label}
+                      {aniosRango.map((anio) => (
+                        <SelectItem key={anio.valor} value={anio.valor}>
+                          {anio.etiqueta}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {filtrosLoading && (
+                    <p className="text-xs text-muted-foreground mt-1">Cargando años...</p>
+                  )}
                 </Card>
                 <Card className="p-4">
                   <label className="text-sm font-medium mb-2 block">Año Fin</label>
-                  <Select value={endYearFilter} onValueChange={setEndYearFilter}>
+                  <Select value={endYearFilter} onValueChange={setEndYearFilter} disabled={filtrosLoading}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Año fin" />
+                      {filtrosLoading ? (
+                        <SelectValue placeholder="Cargando años..." />
+                      ) : (
+                        <SelectValue placeholder="Año fin" />
+                      )}
                     </SelectTrigger>
                     <SelectContent>
-                      {years.map((year) => (
-                        <SelectItem key={year.value} value={year.value}>
-                          {year.label}
+                      {aniosRango.map((anio) => (
+                        <SelectItem key={anio.valor} value={anio.valor}>
+                          {anio.etiqueta}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {filtrosLoading && (
+                    <p className="text-xs text-muted-foreground mt-1">Cargando años...</p>
+                  )}
                 </Card>
               </div>
               <div className="flex gap-2 mb-4">
-                <Button onClick={fetchTopClientes} className="flex-1" disabled={loading}>
+                <Button onClick={fetchTopClientes} className="flex-1" disabled={loading || filtrosLoading}>
                   <Search className="h-4 w-4 mr-2" />
                   {loading ? "Buscando..." : "Filtrar"}
                 </Button>
-                <Button variant="outline" onClick={handleReset} disabled={loading}>
+                <Button variant="outline" onClick={handleReset} disabled={loading || filtrosLoading}>
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Restaurar
                 </Button>
@@ -500,18 +488,22 @@ export default function Statistics() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Ranking</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>Año</TableHead>
+                    <TableHead>Cantidad de Facturas</TableHead>
                     <TableHead>Monto Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {topClientes.map((cliente, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{cliente.CustomerName}</TableCell>
-                      <TableCell>{cliente.Year}</TableCell>
+                  {topClientes.map((cliente) => (
+                    <TableRow key={`${cliente.cliente}-${cliente.anio}`}>
+                      <TableCell className="font-medium">{cliente.ranking}</TableCell>
+                      <TableCell>{cliente.cliente}</TableCell>
+                      <TableCell>{cliente.anio}</TableCell>
+                      <TableCell>{cliente.cantidad_facturas}</TableCell>
                       <TableCell className="text-green-600 font-medium">
-                        ${cliente.Total?.toFixed(2) || "0.00"}
+                        ${cliente.monto_total?.toFixed(2) || "0.00"}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -524,50 +516,64 @@ export default function Statistics() {
         <TabsContent value="top-suppliers" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Top 5 Proveedores</CardTitle>
+              <CardTitle>Top 5 Proveedores con Más Órdenes</CardTitle>
               <CardDescription>
-                Proveedores ordenados por monto total en órdenes de compra
+                Proveedores ordenados por cantidad de órdenes de compra y monto total
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <Card className="p-4">
                   <label className="text-sm font-medium mb-2 block">Año Inicio</label>
-                  <Select value={startYearFilter} onValueChange={setStartYearFilter}>
+                  <Select value={startYearFilter} onValueChange={setStartYearFilter} disabled={filtrosLoading}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Año inicio" />
+                      {filtrosLoading ? (
+                        <SelectValue placeholder="Cargando años..." />
+                      ) : (
+                        <SelectValue placeholder="Año inicio" />
+                      )}
                     </SelectTrigger>
                     <SelectContent>
-                      {years.map((year) => (
-                        <SelectItem key={year.value} value={year.value}>
-                          {year.label}
+                      {aniosRango.map((anio) => (
+                        <SelectItem key={anio.valor} value={anio.valor}>
+                          {anio.etiqueta}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {filtrosLoading && (
+                    <p className="text-xs text-muted-foreground mt-1">Cargando años...</p>
+                  )}
                 </Card>
                 <Card className="p-4">
                   <label className="text-sm font-medium mb-2 block">Año Fin</label>
-                  <Select value={endYearFilter} onValueChange={setEndYearFilter}>
+                  <Select value={endYearFilter} onValueChange={setEndYearFilter} disabled={filtrosLoading}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Año fin" />
+                      {filtrosLoading ? (
+                        <SelectValue placeholder="Cargando años..." />
+                      ) : (
+                        <SelectValue placeholder="Año fin" />
+                      )}
                     </SelectTrigger>
                     <SelectContent>
-                      {years.map((year) => (
-                        <SelectItem key={year.value} value={year.value}>
-                          {year.label}
+                      {aniosRango.map((anio) => (
+                        <SelectItem key={anio.valor} value={anio.valor}>
+                          {anio.etiqueta}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {filtrosLoading && (
+                    <p className="text-xs text-muted-foreground mt-1">Cargando años...</p>
+                  )}
                 </Card>
               </div>
               <div className="flex gap-2 mb-4">
-                <Button onClick={fetchTopProveedores} className="flex-1" disabled={loading}>
+                <Button onClick={fetchTopProveedores} className="flex-1" disabled={loading || filtrosLoading}>
                   <Search className="h-4 w-4 mr-2" />
                   {loading ? "Buscando..." : "Filtrar"}
                 </Button>
-                <Button variant="outline" onClick={handleReset} disabled={loading}>
+                <Button variant="outline" onClick={handleReset} disabled={loading || filtrosLoading}>
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Restaurar
                 </Button>
@@ -575,18 +581,22 @@ export default function Statistics() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Ranking</TableHead>
                     <TableHead>Proveedor</TableHead>
                     <TableHead>Año</TableHead>
+                    <TableHead>Cantidad de Órdenes</TableHead>
                     <TableHead>Monto Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {topProveedores.map((proveedor, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{proveedor.SupplierName}</TableCell>
-                      <TableCell>{proveedor.Year}</TableCell>
+                  {topProveedores.map((proveedor) => (
+                    <TableRow key={`${proveedor.proveedor}-${proveedor.anio}`}>
+                      <TableCell className="font-medium">{proveedor.ranking}</TableCell>
+                      <TableCell>{proveedor.proveedor}</TableCell>
+                      <TableCell>{proveedor.anio}</TableCell>
+                      <TableCell>{proveedor.cantidad_ordenes}</TableCell>
                       <TableCell className="text-blue-600 font-medium">
-                        ${proveedor.Total?.toFixed(2) || "0.00"}
+                        ${proveedor.monto_total?.toFixed(2) || "0.00"}
                       </TableCell>
                     </TableRow>
                   ))}

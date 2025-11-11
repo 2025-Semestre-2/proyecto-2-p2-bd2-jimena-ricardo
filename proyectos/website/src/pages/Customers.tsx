@@ -5,36 +5,37 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RotateCcw, ExternalLink, MapPin, Navigation } from "lucide-react";
+import { Search, RotateCcw, ExternalLink, MapPin, Navigation, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
-// Interfaces para tipado basadas en los procedimientos almacenados
+// Interfaces para tipado
 interface Customer {
-  CustomerID: number;
-  CustomerName: string;
-  CustomerCategory: string;
-  DeliveryMethod: string;
+  id: number;
+  nombre: string;
+  categoria: string;
+  metodo_entrega: string;
 }
 
 interface CustomerDetails {
-  CustomerName: string;
-  CustomerCategory: string;
-  BuyingGroup: string;
-  PrimaryContact: string;
-  AlternateContact: string;
-  BillToCustomer: number;
-  DeliveryMethod: string;
-  DeliveryCity: string;
-  PostalCode: string;
-  PhoneNumber: string;
-  FaxNumber: string;
-  PaymentDays: number;
-  WebsiteURL: string;
-  Address: string;
-  DeliveryLocation: string;
-  // Campos adicionales para coordenadas
-  latitud?: number;
-  longitud?: number;
+  CustomerID: number;
+  nombre_cliente: string;
+  categoria: string;
+  grupo_compra: string;
+  contacto_primario: string;
+  contacto_alternativo: string;
+  cliente_facturar: number;
+  metodo_entrega: string;
+  ciudad_entrega: string;
+  codigo_postal: string;
+  telefono: string;
+  fax: string;
+  dias_gracia_pago: number;
+  sitio_web: string;
+  direccion_entrega: string;
+  direccion_entrega2: string;
+  codigo_postal_entrega: string;
+  latitud: number;
+  longitud: number;
 }
 
 // Interface para los filtros dinámicos
@@ -54,15 +55,19 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Estados para paginación
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
-  const [totalCustomers, setTotalCustomers] = useState(0);
+  // Estados para la paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [tamanoPagina, setTamanoPagina] = useState(50);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+  const [cargandoTotal, setCargandoTotal] = useState(false);
   
   // Estados para los filtros dinámicos
   const [categorias, setCategorias] = useState<Filtro[]>([]);
   const [metodosEntrega, setMetodosEntrega] = useState<Filtro[]>([]);
   const [filtrosLoading, setFiltrosLoading] = useState(true);
+
+  // Calcular total de páginas
+  const totalPaginas = Math.ceil(totalRegistros / tamanoPagina);
 
   // Efecto para cargar datos iniciales y manejar navegación
   useEffect(() => {
@@ -74,24 +79,28 @@ export default function Customers() {
       // Si autoSearch es true, realizar búsqueda automática
       if (state.autoSearch) {
         setTimeout(() => {
-          fetchCustomers(pageNumber, pageSize, state.initialSearch, categoryFilter, deliveryMethodFilter);
+          fetchCustomers(state.initialSearch, categoryFilter, deliveryMethodFilter);
         }, 100);
       }
     } else {
-      fetchCustomers(pageNumber, pageSize);
+      fetchCustomers();
     }
     
     fetchFiltros();
-    fetchTotalCustomers();
   }, [location.state]);
+
+  // Efecto para cargar el total cuando cambian los filtros
+  useEffect(() => {
+    if (!loading) {
+      fetchTotalClientes();
+    }
+  }, [searchTerm, categoryFilter, deliveryMethodFilter]);
 
   // Función para cargar los filtros dinámicos
   const fetchFiltros = async () => {
     try {
       setFiltrosLoading(true);
-      
-      // Cargar todos los filtros de clientes desde el nuevo endpoint
-      const response = await fetch('http://localhost:3000/filters/customers');
+      const response = await fetch('http://localhost:3000/api/filtros/clientes');
       
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -110,36 +119,19 @@ export default function Customers() {
     }
   };
 
-  // Función para obtener el total de clientes
-  const fetchTotalCustomers = async () => {
-    try {
-      const response = await fetch('http://localhost:3000/total-customers');
-      const total = await response.json();
-      setTotalCustomers(total);
-    } catch (err) {
-      console.error('Error fetching total customers:', err);
-    }
-  };
-
-  const fetchCustomers = async (
-    page: number = 1, 
-    size: number = 50, 
-    customer: string = "", 
-    category: string = "", 
-    deliveryMethod: string = ""
-  ) => {
+  const fetchCustomers = async (nombre?: string, categoria?: string, metodoEntrega?: string) => {
     try {
       setLoading(true);
       setError(null);
       
-      const params = new URLSearchParams({
-        pageNumber: page.toString(),
-        pageSize: size.toString(),
-        customer: customer ? `%${customer}%` : '%',
-        category: category && category !== 'all' ? `%${category}%` : '%'
-      });
+      const params = new URLSearchParams();
+      params.append('pagina', paginaActual.toString());
+      params.append('tamanoPagina', tamanoPagina.toString());
+      if (nombre) params.append('nombre', nombre);
+      if (categoria && categoria !== 'all') params.append('categoria', categoria);
+      if (metodoEntrega && metodoEntrega !== 'all') params.append('metodoEntrega', metodoEntrega);
       
-      const url = `http://localhost:3000/customers-list?${params.toString()}`;
+      const url = `http://localhost:3000/api/clientes?${params.toString()}`;
       
       const response = await fetch(url);
       
@@ -149,8 +141,6 @@ export default function Customers() {
       
       const data = await response.json();
       setCustomers(data);
-      setPageNumber(page);
-      setPageSize(size);
     } catch (err) {
       console.error('Error fetching customers:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los clientes');
@@ -159,26 +149,43 @@ export default function Customers() {
     }
   };
 
-  const fetchCustomerDetails = async (id: number) => {
+  const fetchTotalClientes = async () => {
     try {
-      setError(null);
-      const response = await fetch(`http://localhost:3000/customer-details?customerId=${id}`);
+      setCargandoTotal(true);
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('nombre', searchTerm);
+      if (categoryFilter && categoryFilter !== 'all') params.append('categoria', categoryFilter);
+      if (deliveryMethodFilter && deliveryMethodFilter !== 'all') params.append('metodoEntrega', deliveryMethodFilter);
+      
+      const url = `http://localhost:3000/api/clientes/total?${params.toString()}`;
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
+      setTotalRegistros(data.Total || 0);
+    } catch (err) {
+      console.error('Error fetching total customers:', err);
+      setTotalRegistros(0);
+    } finally {
+      setCargandoTotal(false);
+    }
+  };
+
+  const fetchCustomerDetails = async (id: number) => {
+    try {
+      setError(null);
+      const response = await fetch(`http://localhost:3000/api/clientes/${id}`);
       
-      // Procesar los datos para extraer coordenadas si están disponibles
-      const processedData: CustomerDetails = {
-        ...data[0], // La API devuelve un array, tomamos el primer elemento
-        // Si DeliveryLocation contiene coordenadas, extraerlas
-        latitud: data[0].DeliveryLocation ? parseFloat(data[0].DeliveryLocation.split(',')[0]) : undefined,
-        longitud: data[0].DeliveryLocation ? parseFloat(data[0].DeliveryLocation.split(',')[1]) : undefined
-      };
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
       
-      setSelectedCustomer(processedData);
+      const data = await response.json();
+      setSelectedCustomer(data);
     } catch (err) {
       console.error('Error fetching customer details:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los detalles del cliente');
@@ -192,31 +199,52 @@ export default function Customers() {
   };
 
   const handleSearch = () => {
-    fetchCustomers(1, pageSize, searchTerm, categoryFilter, deliveryMethodFilter);
+    setPaginaActual(1); // Resetear a primera página al buscar
+    fetchCustomers(searchTerm, categoryFilter, deliveryMethodFilter);
   };
 
   const handleReset = () => {
     setSearchTerm("");
     setCategoryFilter("");
     setDeliveryMethodFilter("");
-    fetchCustomers(1, pageSize);
+    setPaginaActual(1);
+    fetchCustomers();
   };
 
   const handleViewDetails = (customer: Customer) => {
-    fetchCustomerDetails(customer.CustomerID);
+    fetchCustomerDetails(customer.id);
   };
 
-  // Función para cambiar de página
-  const handlePageChange = (newPage: number) => {
-    fetchCustomers(newPage, pageSize, searchTerm, categoryFilter, deliveryMethodFilter);
+  // Funciones de navegación de paginación
+  const irAPagina = (pagina: number) => {
+    setPaginaActual(pagina);
+    fetchCustomers(searchTerm, categoryFilter, deliveryMethodFilter);
   };
+
+  const paginaAnterior = () => {
+    if (paginaActual > 1) {
+      irAPagina(paginaActual - 1);
+    }
+  };
+
+  const paginaSiguiente = () => {
+    if (paginaActual < totalPaginas) {
+      irAPagina(paginaActual + 1);
+    }
+  };
+
+  // Efecto para cargar datos cuando cambia la página
+  useEffect(() => {
+    if (!loading) {
+      fetchCustomers(searchTerm, categoryFilter, deliveryMethodFilter);
+    }
+  }, [paginaActual, tamanoPagina]);
 
   return (
     <div className="space-y-6 animate-fade-up">
       <div className="bg-gradient-to-r from-blue-500/10 to-blue-600/10 rounded-xl p-6 border border-blue-500/20">
         <h1 className="text-3xl font-bold text-blue-700 dark:text-blue-400">Clientes</h1>
         <p className="text-muted-foreground mt-2">Consulta y gestiona los clientes registrados</p>
-        <p className="text-sm text-muted-foreground mt-1">Total de clientes: {totalCustomers}</p>
       </div>
 
       {error && (
@@ -296,6 +324,41 @@ export default function Customers() {
         </Button>
       </div>
 
+      {/* Controles de paginación superiores */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Mostrar:</span>
+            <Select 
+              value={tamanoPagina.toString()} 
+              onValueChange={(value) => {
+                setTamanoPagina(Number(value));
+                setPaginaActual(1);
+              }}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">por página</span>
+          </div>
+        </div>
+        
+        <div className="text-sm text-muted-foreground">
+          {cargandoTotal ? (
+            "Cargando..."
+          ) : (
+            `Total: ${totalRegistros} cliente${totalRegistros !== 1 ? 's' : ''}`
+          )}
+        </div>
+      </div>
+
       <Card className="overflow-hidden shadow-lg animate-fade-in" style={{ animationDelay: '200ms' }}>
         {loading ? (
           <div className="p-8 text-center">
@@ -318,10 +381,10 @@ export default function Customers() {
               </TableHeader>
               <TableBody>
                 {customers.map((customer) => (
-                  <TableRow key={customer.CustomerID}>
-                    <TableCell className="font-medium">{customer.CustomerName}</TableCell>
-                    <TableCell>{customer.CustomerCategory}</TableCell>
-                    <TableCell>{customer.DeliveryMethod}</TableCell>
+                  <TableRow key={customer.id}>
+                    <TableCell className="font-medium">{customer.nombre}</TableCell>
+                    <TableCell>{customer.categoria}</TableCell>
+                    <TableCell>{customer.metodo_entrega}</TableCell>
                     <TableCell>
                       <Button
                         variant="outline"
@@ -337,27 +400,60 @@ export default function Customers() {
               </TableBody>
             </Table>
             
-            {/* Paginación */}
-            <div className="flex justify-between items-center p-4 border-t">
+            {/* Controles de paginación inferiores */}
+            <div className="flex items-center justify-between p-4 border-t">
               <div className="text-sm text-muted-foreground">
-                Página {pageNumber} - Mostrando {customers.length} de {totalCustomers} clientes
+                Página {paginaActual} de {totalPaginas}
               </div>
-              <div className="flex gap-2">
+              
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(pageNumber - 1)}
-                  disabled={pageNumber === 1 || loading}
+                  onClick={paginaAnterior}
+                  disabled={paginaActual <= 1 || loading}
                 >
+                  <ChevronLeft className="h-4 w-4" />
                   Anterior
                 </Button>
+                
+                <div className="flex gap-1">
+                  {/* Mostrar números de página */}
+                  {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                    let paginaNumero;
+                    if (totalPaginas <= 5) {
+                      paginaNumero = i + 1;
+                    } else if (paginaActual <= 3) {
+                      paginaNumero = i + 1;
+                    } else if (paginaActual >= totalPaginas - 2) {
+                      paginaNumero = totalPaginas - 4 + i;
+                    } else {
+                      paginaNumero = paginaActual - 2 + i;
+                    }
+                    
+                    return (
+                      <Button
+                        key={paginaNumero}
+                        variant={paginaActual === paginaNumero ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => irAPagina(paginaNumero)}
+                        disabled={loading}
+                        className="w-8 h-8 p-0"
+                      >
+                        {paginaNumero}
+                      </Button>
+                    );
+                  })}
+                </div>
+                
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(pageNumber + 1)}
-                  disabled={customers.length < pageSize || loading}
+                  onClick={paginaSiguiente}
+                  disabled={paginaActual >= totalPaginas || loading}
                 >
                   Siguiente
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -375,64 +471,64 @@ export default function Customers() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Nombre</p>
-                  <p className="font-medium">{selectedCustomer.CustomerName}</p>
+                  <p className="font-medium">{selectedCustomer.nombre_cliente}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Categoría</p>
-                  <p className="font-medium">{selectedCustomer.CustomerCategory}</p>
+                  <p className="font-medium">{selectedCustomer.categoria}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Grupo de Compra</p>
-                  <p className="font-medium">{selectedCustomer.BuyingGroup || "N/A"}</p>
+                  <p className="font-medium">{selectedCustomer.grupo_compra || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Método de Entrega</p>
-                  <p className="font-medium">{selectedCustomer.DeliveryMethod}</p>
+                  <p className="font-medium">{selectedCustomer.metodo_entrega}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Contacto Primario</p>
-                  <p className="font-medium">{selectedCustomer.PrimaryContact || "N/A"}</p>
+                  <p className="font-medium">{selectedCustomer.contacto_primario || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Contacto Alternativo</p>
-                  <p className="font-medium">{selectedCustomer.AlternateContact || "N/A"}</p>
+                  <p className="font-medium">{selectedCustomer.contacto_alternativo || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Cliente para Facturar ID</p>
-                  <p className="font-medium">{selectedCustomer.BillToCustomer}</p>
+                  <p className="font-medium">{selectedCustomer.cliente_facturar}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Ciudad de Entrega</p>
-                  <p className="font-medium">{selectedCustomer.DeliveryCity || "N/A"}</p>
+                  <p className="font-medium">{selectedCustomer.ciudad_entrega || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Código Postal</p>
-                  <p className="font-medium">{selectedCustomer.PostalCode || "N/A"}</p>
+                  <p className="font-medium">{selectedCustomer.codigo_postal || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Teléfono</p>
-                  <p className="font-medium">{selectedCustomer.PhoneNumber || "N/A"}</p>
+                  <p className="font-medium">{selectedCustomer.telefono || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Fax</p>
-                  <p className="font-medium">{selectedCustomer.FaxNumber || "N/A"}</p>
+                  <p className="font-medium">{selectedCustomer.fax || "N/A"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Días de Gracia</p>
-                  <p className="font-medium">{selectedCustomer.PaymentDays} días</p>
+                  <p className="font-medium">{selectedCustomer.dias_gracia_pago} días</p>
                 </div>
               </div>
 
               <div>
                 <p className="text-sm text-muted-foreground">Sitio Web</p>
-                {selectedCustomer.WebsiteURL ? (
+                {selectedCustomer.sitio_web ? (
                   <a
-                    href={selectedCustomer.WebsiteURL}
+                    href={selectedCustomer.sitio_web}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:underline inline-flex items-center gap-1"
                   >
-                    {selectedCustomer.WebsiteURL}
+                    {selectedCustomer.sitio_web}
                     <ExternalLink className="h-3 w-3" />
                   </a>
                 ) : (
@@ -441,8 +537,15 @@ export default function Customers() {
               </div>
 
               <div>
-                <p className="text-sm text-muted-foreground">Dirección</p>
-                <p className="font-medium">{selectedCustomer.Address}</p>
+                <p className="text-sm text-muted-foreground">Dirección de Entrega</p>
+                <p className="font-medium">
+                  {selectedCustomer.direccion_entrega} {selectedCustomer.direccion_entrega2 && `, ${selectedCustomer.direccion_entrega2}`}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground">Código Postal de Entrega</p>
+                <p className="font-medium">{selectedCustomer.codigo_postal_entrega || "N/A"}</p>
               </div>
 
               {/* Sección de Mapa de Google Maps */}
@@ -453,7 +556,7 @@ export default function Customers() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => openGoogleMaps(selectedCustomer.latitud!, selectedCustomer.longitud!)}
+                      onClick={() => openGoogleMaps(selectedCustomer.latitud, selectedCustomer.longitud)}
                       className="flex items-center gap-2"
                     >
                       <Navigation className="h-4 w-4" />
@@ -495,10 +598,10 @@ export default function Customers() {
                       <MapPin className="h-8 w-8 mx-auto mb-2 text-primary opacity-50" />
                       <p className="font-medium">Ubicación no disponible</p>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Ciudad: {selectedCustomer.DeliveryCity || "N/A"}
+                        Ciudad: {selectedCustomer.ciudad_entrega || "N/A"}
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Dirección: {selectedCustomer.Address}
+                        Dirección: {selectedCustomer.direccion_entrega}
                       </p>
                     </div>
                   </div>

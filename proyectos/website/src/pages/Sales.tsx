@@ -5,40 +5,41 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RotateCcw, Link as LinkIcon, Calendar, ExternalLink } from "lucide-react";
+import { Search, RotateCcw, Link as LinkIcon, Calendar, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useNavigate, useLocation } from "react-router-dom";
 
-// Interfaces para tipado basadas en los procedimientos almacenados
+// Interfaces para tipado
 interface Invoice {
-  InvoiceID: number;
-  InvoiceDate: string;
-  CustomerName: string;
-  DeliveryMethod: string;
-  Total: number;
+  id: number;
+  fecha: string;
+  cliente: string;
+  metodo_entrega: string;
+  monto: number;
 }
 
 interface InvoiceHeader {
-  InvoiceID: number;
-  CustomerName: string;
-  DeliveryMethod: string;
-  OrderNumber: string;
-  ContactPerson: string;
-  SalesPerson: string;
-  InvoiceDate: string;
-  DeliveryInstructions: string;
+  numero_factura: string;
+  nombre_cliente: string;
+  metodo_entrega: string;
+  numero_orden: string;
+  persona_contacto: string;
+  nombre_vendedor: string;
+  fecha_factura: string;
+  instrucciones_entrega: string;
 }
 
 interface InvoiceLine {
-  ProductName: string;
-  Quantity: number;
-  UnitPrice: number;
-  TaxRate: number;
-  TaxAmount: number;
-  Total: number;
+  nombre_producto: string;
+  cantidad: number;
+  precio_unitario: number;
+  impuesto_aplicado: number;
+  monto_impuesto: number;
+  ganancia_linea: number;
+  total_linea: number;
 }
 
 interface InvoiceDetails {
@@ -61,55 +62,68 @@ export default function Sales() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Estados para paginación
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
-  const [totalInvoices, setTotalInvoices] = useState(0);
+  // Estados para la paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [tamanoPagina, setTamanoPagina] = useState(50);
+  const [totalRegistros, setTotalRegistros] = useState(0);
+  const [cargandoTotal, setCargandoTotal] = useState(false);
   
-  // Estados para los filtros dinámicos
+  // Estados para los filtros dinámicos - SOLO métodos de entrega
   const [metodosEntrega, setMetodosEntrega] = useState<any[]>([]);
   const [filtrosLoading, setFiltrosLoading] = useState(true);
 
+  // Calcular total de páginas
+  const totalPaginas = Math.ceil(totalRegistros / tamanoPagina);
+
   // Cargar facturas iniciales y filtros
   useEffect(() => {
+    // Verificar si hay parámetros de navegación para cliente
     const state = location.state as { initialSearch?: string; autoSearch?: boolean };
     
     if (state?.initialSearch) {
       setClienteFilter(state.initialSearch);
+      // Si autoSearch es true, realizar búsqueda automática
       if (state.autoSearch) {
         setTimeout(() => {
+          const fechaInicioStr = fechaInicio ? format(fechaInicio, "yyyy-MM-dd") : undefined;
+          const fechaFinStr = fechaFin ? format(fechaFin, "yyyy-MM-dd") : undefined;
+          
           fetchInvoices(
-            pageNumber, 
-            pageSize,
-            state.initialSearch
+            state.initialSearch, 
+            fechaInicioStr, 
+            fechaFinStr, 
+            metodoEntregaFilter,
+            montoMinFilter,
+            montoMaxFilter
           );
         }, 100);
       }
     } else {
-      fetchInvoices(pageNumber, pageSize);
+      fetchInvoices();
     }
     
     fetchFiltros();
-    fetchTotalInvoices();
   }, [location.state]);
+
+  // Efecto para cargar el total cuando cambian los filtros
+  useEffect(() => {
+    if (!loading) {
+      fetchTotalVentas();
+    }
+  }, [clienteFilter, fechaInicio, fechaFin, metodoEntregaFilter, montoMinFilter, montoMaxFilter]);
 
   // Función para cargar los filtros dinámicos
   const fetchFiltros = async () => {
     try {
       setFiltrosLoading(true);
+      const response = await fetch('http://localhost:3000/api/filtros/ventas');
       
-      // Cargar métodos de entrega desde la API
-      const response = await fetch('http://localhost:3000/customer-delivery-methods');
-      const metodosData = await response.json();
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
       
-      // Transformar datos a formato Filtro
-      const metodosFiltro = metodosData.map((met: any) => ({
-        tipo_filtro: 'metodos_entrega',
-        valor: met.DeliveryMethodName,
-        etiqueta: met.DeliveryMethodName
-      }));
-      
-      setMetodosEntrega(metodosFiltro);
+      const data = await response.json();
+      setMetodosEntrega(data.filter((filtro: any) => filtro.tipo_filtro === 'metodos_entrega'));
       
     } catch (err) {
       console.error('Error cargando filtros:', err);
@@ -118,33 +132,29 @@ export default function Sales() {
     }
   };
 
-  // Función para obtener el total de facturas
-  const fetchTotalInvoices = async () => {
-    try {
-      const response = await fetch('http://localhost:3000/total-invoices');
-      const total = await response.json();
-      setTotalInvoices(total);
-    } catch (err) {
-      console.error('Error fetching total invoices:', err);
-    }
-  };
-
   const fetchInvoices = async (
-    page: number = 1, 
-    size: number = 50, 
-    customer: string = ""
+    cliente?: string, 
+    fechaInicio?: string, 
+    fechaFin?: string, 
+    metodoEntrega?: string,
+    montoMin?: string,
+    montoMax?: string
   ) => {
     try {
       setLoading(true);
       setError(null);
       
-      const params = new URLSearchParams({
-        pageNumber: page.toString(),
-        pageSize: size.toString(),
-        customer: customer ? `%${customer}%` : '%'
-      });
+      const params = new URLSearchParams();
+      params.append('pagina', paginaActual.toString());
+      params.append('tamanoPagina', tamanoPagina.toString());
+      if (cliente) params.append('cliente', cliente);
+      if (fechaInicio) params.append('fechaInicio', fechaInicio);
+      if (fechaFin) params.append('fechaFin', fechaFin);
+      if (metodoEntrega && metodoEntrega !== 'all') params.append('metodoEntrega', metodoEntrega);
+      if (montoMin) params.append('montoMin', montoMin);
+      if (montoMax) params.append('montoMax', montoMax);
       
-      const url = `http://localhost:3000/invoices-list?${params.toString()}`;
+      const url = `http://localhost:3000/api/ventas?${params.toString()}`;
       
       const response = await fetch(url);
       
@@ -154,8 +164,6 @@ export default function Sales() {
       
       const data = await response.json();
       setInvoices(data);
-      setPageNumber(page);
-      setPageSize(size);
     } catch (err) {
       console.error('Error fetching invoices:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar las facturas');
@@ -164,24 +172,46 @@ export default function Sales() {
     }
   };
 
+  const fetchTotalVentas = async () => {
+    try {
+      setCargandoTotal(true);
+      const params = new URLSearchParams();
+      if (clienteFilter) params.append('cliente', clienteFilter);
+      if (fechaInicio) params.append('fechaInicio', format(fechaInicio, "yyyy-MM-dd"));
+      if (fechaFin) params.append('fechaFin', format(fechaFin, "yyyy-MM-dd"));
+      if (metodoEntregaFilter && metodoEntregaFilter !== 'all') params.append('metodoEntrega', metodoEntregaFilter);
+      if (montoMinFilter) params.append('montoMin', montoMinFilter);
+      if (montoMaxFilter) params.append('montoMax', montoMaxFilter);
+      
+      const url = `http://localhost:3000/api/ventas/total?${params.toString()}`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setTotalRegistros(data.Total || 0);
+    } catch (err) {
+      console.error('Error fetching total invoices:', err);
+      setTotalRegistros(0);
+    } finally {
+      setCargandoTotal(false);
+    }
+  };
+
   const fetchInvoiceDetails = async (id: number) => {
     try {
       setError(null);
+      const response = await fetch(`http://localhost:3000/api/ventas/${id}`);
       
-      // Obtener encabezado de la factura
-      const headerResponse = await fetch(`http://localhost:3000/invoice-header?invoiceId=${id}`);
-      if (!headerResponse.ok) throw new Error(`Error ${headerResponse.status}`);
-      const encabezado = await headerResponse.json();
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
       
-      // Obtener líneas de la factura
-      const linesResponse = await fetch(`http://localhost:3000/invoice-lines?invoiceId=${id}`);
-      if (!linesResponse.ok) throw new Error(`Error ${linesResponse.status}`);
-      const detalles = await linesResponse.json();
-      
-      setSelectedInvoice({
-        encabezado: encabezado[0], // La API devuelve un array, tomamos el primer elemento
-        detalles: detalles
-      });
+      const data = await response.json();
+      setSelectedInvoice(data);
     } catch (err) {
       console.error('Error fetching invoice details:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los detalles de la factura');
@@ -211,7 +241,18 @@ export default function Sales() {
   };
 
   const handleSearch = () => {
-    fetchInvoices(1, pageSize, clienteFilter);
+    setPaginaActual(1); // Resetear a primera página al buscar
+    const fechaInicioStr = fechaInicio ? format(fechaInicio, "yyyy-MM-dd") : undefined;
+    const fechaFinStr = fechaFin ? format(fechaFin, "yyyy-MM-dd") : undefined;
+    
+    fetchInvoices(
+      clienteFilter, 
+      fechaInicioStr, 
+      fechaFinStr, 
+      metodoEntregaFilter,
+      montoMinFilter,
+      montoMaxFilter
+    );
   };
 
   const handleReset = () => {
@@ -221,21 +262,62 @@ export default function Sales() {
     setMetodoEntregaFilter("");
     setMontoMinFilter("");
     setMontoMaxFilter("");
-    fetchInvoices(1, pageSize);
+    setPaginaActual(1);
+    fetchInvoices();
   };
 
   const handleViewDetails = (invoice: Invoice) => {
-    fetchInvoiceDetails(invoice.InvoiceID);
+    fetchInvoiceDetails(invoice.id);
   };
 
-  // Función para cambiar de página
-  const handlePageChange = (newPage: number) => {
-    fetchInvoices(newPage, pageSize, clienteFilter);
+  // Funciones de navegación de paginación
+  const irAPagina = (pagina: number) => {
+    setPaginaActual(pagina);
+    const fechaInicioStr = fechaInicio ? format(fechaInicio, "yyyy-MM-dd") : undefined;
+    const fechaFinStr = fechaFin ? format(fechaFin, "yyyy-MM-dd") : undefined;
+    
+    fetchInvoices(
+      clienteFilter, 
+      fechaInicioStr, 
+      fechaFinStr, 
+      metodoEntregaFilter,
+      montoMinFilter,
+      montoMaxFilter
+    );
   };
+
+  const paginaAnterior = () => {
+    if (paginaActual > 1) {
+      irAPagina(paginaActual - 1);
+    }
+  };
+
+  const paginaSiguiente = () => {
+    if (paginaActual < totalPaginas) {
+      irAPagina(paginaActual + 1);
+    }
+  };
+
+  // Efecto para cargar datos cuando cambia la página
+  useEffect(() => {
+    if (!loading) {
+      const fechaInicioStr = fechaInicio ? format(fechaInicio, "yyyy-MM-dd") : undefined;
+      const fechaFinStr = fechaFin ? format(fechaFin, "yyyy-MM-dd") : undefined;
+      
+      fetchInvoices(
+        clienteFilter, 
+        fechaInicioStr, 
+        fechaFinStr, 
+        metodoEntregaFilter,
+        montoMinFilter,
+        montoMaxFilter
+      );
+    }
+  }, [paginaActual, tamanoPagina]);
 
   // Calcular total de la factura
   const calculateInvoiceTotal = (lines: InvoiceLine[]) => {
-    return lines.reduce((total, line) => total + line.Total, 0);
+    return lines.reduce((total, line) => total + line.total_linea, 0);
   };
 
   return (
@@ -243,7 +325,6 @@ export default function Sales() {
       <div className="bg-gradient-to-r from-orange-500/10 to-orange-600/10 rounded-xl p-6 border border-orange-500/20">
         <h1 className="text-3xl font-bold text-orange-700 dark:text-orange-400">Ventas</h1>
         <p className="text-muted-foreground mt-2">Consulta las facturas y ventas registradas</p>
-        <p className="text-sm text-muted-foreground mt-1">Total de facturas: {totalInvoices}</p>
       </div>
 
       {error && (
@@ -310,7 +391,7 @@ export default function Sales() {
           </Popover>
         </Card>
 
-        {/* Cliente */}
+        {/* Cliente - AHORA ES INPUT */}
         <Card className="p-6 hover-lift">
           <label className="text-sm font-medium mb-2 block">Cliente</label>
           <Input
@@ -382,6 +463,41 @@ export default function Sales() {
         </Button>
       </div>
 
+      {/* Controles de paginación superiores */}
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Mostrar:</span>
+            <Select 
+              value={tamanoPagina.toString()} 
+              onValueChange={(value) => {
+                setTamanoPagina(Number(value));
+                setPaginaActual(1);
+              }}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">por página</span>
+          </div>
+        </div>
+        
+        <div className="text-sm text-muted-foreground">
+          {cargandoTotal ? (
+            "Cargando..."
+          ) : (
+            `Total: ${totalRegistros} factura${totalRegistros !== 1 ? 's' : ''}`
+          )}
+        </div>
+      </div>
+
       {/* TABLA DE RESULTADOS */}
       <Card className="overflow-hidden shadow-lg animate-fade-in" style={{ animationDelay: '200ms' }}>
         {loading ? (
@@ -407,12 +523,12 @@ export default function Sales() {
               </TableHeader>
               <TableBody>
                 {invoices.map((invoice) => (
-                  <TableRow key={invoice.InvoiceID}>
-                    <TableCell className="font-medium">{invoice.InvoiceID}</TableCell>
-                    <TableCell>{new Date(invoice.InvoiceDate).toLocaleDateString()}</TableCell>
-                    <TableCell>{invoice.CustomerName}</TableCell>
-                    <TableCell>{invoice.DeliveryMethod}</TableCell>
-                    <TableCell>${invoice.Total?.toFixed(2) || "0.00"}</TableCell>
+                  <TableRow key={invoice.id}>
+                    <TableCell className="font-medium">{invoice.id}</TableCell>
+                    <TableCell>{new Date(invoice.fecha).toLocaleDateString()}</TableCell>
+                    <TableCell>{invoice.cliente}</TableCell>
+                    <TableCell>{invoice.metodo_entrega}</TableCell>
+                    <TableCell>${invoice.monto?.toFixed(2) || "0.00"}</TableCell>
                     <TableCell>
                       <Button
                         variant="outline"
@@ -428,27 +544,60 @@ export default function Sales() {
               </TableBody>
             </Table>
             
-            {/* Paginación */}
-            <div className="flex justify-between items-center p-4 border-t">
+            {/* Controles de paginación inferiores */}
+            <div className="flex items-center justify-between p-4 border-t">
               <div className="text-sm text-muted-foreground">
-                Página {pageNumber} - Mostrando {invoices.length} de {totalInvoices} facturas
+                Página {paginaActual} de {totalPaginas}
               </div>
-              <div className="flex gap-2">
+              
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(pageNumber - 1)}
-                  disabled={pageNumber === 1 || loading}
+                  onClick={paginaAnterior}
+                  disabled={paginaActual <= 1 || loading}
                 >
+                  <ChevronLeft className="h-4 w-4" />
                   Anterior
                 </Button>
+                
+                <div className="flex gap-1">
+                  {/* Mostrar números de página */}
+                  {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
+                    let paginaNumero;
+                    if (totalPaginas <= 5) {
+                      paginaNumero = i + 1;
+                    } else if (paginaActual <= 3) {
+                      paginaNumero = i + 1;
+                    } else if (paginaActual >= totalPaginas - 2) {
+                      paginaNumero = totalPaginas - 4 + i;
+                    } else {
+                      paginaNumero = paginaActual - 2 + i;
+                    }
+                    
+                    return (
+                      <Button
+                        key={paginaNumero}
+                        variant={paginaActual === paginaNumero ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => irAPagina(paginaNumero)}
+                        disabled={loading}
+                        className="w-8 h-8 p-0"
+                      >
+                        {paginaNumero}
+                      </Button>
+                    );
+                  })}
+                </div>
+                
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handlePageChange(pageNumber + 1)}
-                  disabled={invoices.length < pageSize || loading}
+                  onClick={paginaSiguiente}
+                  disabled={paginaActual >= totalPaginas || loading}
                 >
                   Siguiente
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -460,7 +609,7 @@ export default function Sales() {
       <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Detalles de la Factura #{selectedInvoice?.encabezado.InvoiceID}</DialogTitle>
+            <DialogTitle>Detalles de la Factura #{selectedInvoice?.encabezado.numero_factura}</DialogTitle>
           </DialogHeader>
           {selectedInvoice && (
             <div className="space-y-6">
@@ -469,15 +618,15 @@ export default function Sales() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Número de Factura</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.InvoiceID}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.numero_factura}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Nombre del Cliente</p>
                     <button 
-                      onClick={() => navigateToCustomer(selectedInvoice.encabezado.CustomerName)}
+                      onClick={() => navigateToCustomer(selectedInvoice.encabezado.nombre_cliente)}
                       className="font-medium text-primary hover:underline inline-flex items-center gap-1 transition-colors"
                     >
-                      {selectedInvoice.encabezado.CustomerName}
+                      {selectedInvoice.encabezado.nombre_cliente}
                       <ExternalLink className="h-3 w-3" />
                     </button>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -486,27 +635,27 @@ export default function Sales() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Método de Entrega</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.DeliveryMethod}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.metodo_entrega}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Número de Orden</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.OrderNumber || "N/A"}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.numero_orden || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Persona de Contacto</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.ContactPerson}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.persona_contacto}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Nombre del Vendedor</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.SalesPerson}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.nombre_vendedor}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Fecha de la Factura</p>
-                    <p className="font-medium">{new Date(selectedInvoice.encabezado.InvoiceDate).toLocaleDateString()}</p>
+                    <p className="font-medium">{new Date(selectedInvoice.encabezado.fecha_factura).toLocaleDateString()}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Instrucciones de Entrega</p>
-                    <p className="font-medium">{selectedInvoice.encabezado.DeliveryInstructions || "N/A"}</p>
+                    <p className="font-medium">{selectedInvoice.encabezado.instrucciones_entrega || "N/A"}</p>
                   </div>
                 </div>
               </div>
@@ -526,6 +675,7 @@ export default function Sales() {
                       <TableHead>Precio Unit.</TableHead>
                       <TableHead>Impuesto</TableHead>
                       <TableHead>Monto Imp.</TableHead>
+                      <TableHead>Ganancia</TableHead>
                       <TableHead>Total Línea</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -534,22 +684,23 @@ export default function Sales() {
                       <TableRow key={index}>
                         <TableCell>
                           <button 
-                            onClick={() => navigateToInventory(line.ProductName)}
+                            onClick={() => navigateToInventory(line.nombre_producto)}
                             className="text-primary hover:underline inline-flex items-center gap-1 transition-colors"
                           >
-                            {line.ProductName}
+                            {line.nombre_producto}
                             <ExternalLink className="h-3 w-3" />
                           </button>
                         </TableCell>
-                        <TableCell>{line.Quantity}</TableCell>
-                        <TableCell>${line.UnitPrice.toFixed(2)}</TableCell>
-                        <TableCell>{line.TaxRate}%</TableCell>
-                        <TableCell>${line.TaxAmount.toFixed(2)}</TableCell>
-                        <TableCell className="font-medium">${line.Total.toFixed(2)}</TableCell>
+                        <TableCell>{line.cantidad}</TableCell>
+                        <TableCell>${line.precio_unitario.toFixed(2)}</TableCell>
+                        <TableCell>{line.impuesto_aplicado}%</TableCell>
+                        <TableCell>${line.monto_impuesto.toFixed(2)}</TableCell>
+                        <TableCell>${line.ganancia_linea.toFixed(2)}</TableCell>
+                        <TableCell className="font-medium">${line.total_linea.toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="bg-muted/50">
-                      <TableCell colSpan={5} className="text-right font-semibold text-lg">
+                      <TableCell colSpan={6} className="text-right font-semibold text-lg">
                         Total de la Factura:
                       </TableCell>
                       <TableCell className="font-bold text-lg text-primary">

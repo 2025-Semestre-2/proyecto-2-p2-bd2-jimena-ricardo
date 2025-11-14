@@ -1,25 +1,9 @@
 const sql = require('mssql');
 
-const dbConfig ={
-   server: 'localhost',
-   authentication: {
-    type: 'default',
-     options: {
-       userName: 'sa',
-       password: 'Romanos5:8',
-     },
-   },
-   options: {
-     port: 1439,
-     database: 'WideWorldImporters',
-     encrypt: false,
-   },
- };
+const connectionString = 'Server=LAPTOP-NHTRS4E4\\MYSQLSERVER;Database=WideWorldImporters;User Id=sa;Password=raspberry;Encrypt=false;TrustServerCertificate=true';
 
-const poolPromise = new sql.ConnectionPool(dbConfig)
-  .connect()
+const poolPromise = sql.connect(connectionString)
   .then(pool => {
-    console.log('Conectado a SQL Server');
     return pool;
   })
   .catch(err => {

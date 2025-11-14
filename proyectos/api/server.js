@@ -14,7 +14,6 @@ app.use('/api/ventas', require('./routes/ventas'));
 app.use('/api/estadisticas', require('./routes/estadisticas'));
 app.use('/api/filtros', require('./routes/filtros'));
 
-// Agrega esto a tu server.js después de las otras rutas
 app.get('/api/geocode', async (req, res) => {
   try {
     const { address } = req.query;
@@ -27,7 +26,7 @@ app.get('/api/geocode', async (req, res) => {
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&addressdetails=1`,
       {
         headers: {
-          'User-Agent': 'WideWorldImporters/1.0 (jimenez@example.com)',
+          'User-Agent': 'WideWorldImporters/1.0 (jimendez@example.com)',
           'Accept-Language': 'es'
         }
       }

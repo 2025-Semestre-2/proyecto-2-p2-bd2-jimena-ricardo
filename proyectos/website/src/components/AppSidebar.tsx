@@ -1,4 +1,4 @@
-import { Users, Package, TrendingUp, FileText, BarChart3 } from "lucide-react";
+import { Home, Users, Package, TrendingUp, FileText, BarChart3 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import {
   Sidebar,
@@ -12,20 +12,40 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 
-const menuItems = [
+// Menú para Administradores
+const adminMenuItems = [
+  { title: "Inicio", url: "/", icon: Home },
   { title: "Clientes", url: "/clientes", icon: Users },
   { title: "Proveedores", url: "/proveedores", icon: Package },
   { title: "Inventarios", url: "/inventarios", icon: TrendingUp },
   { title: "Ventas", url: "/ventas", icon: FileText },
+];
+
+// Menú para Corporativos
+const corporateMenuItems = [
+  { title: "Inicio", url: "/", icon: Home },
   { title: "Estadísticas", url: "/estadisticas", icon: BarChart3 },
 ];
 
 export function AppSidebar() {
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+
+  // Determinar qué menú mostrar según el rol
+  const getMenuItems = () => {
+    if (!user) return adminMenuItems; // Por defecto
+    
+    if (user.rol === "Corporativo") {
+      return corporateMenuItems;
+    } else {
+      return adminMenuItems;
+    }
+  };
+
+  const menuItems = getMenuItems();
+
   return (
     <Sidebar className="border-r">
-      <SidebarHeader className="border-b px-6 py-4">
-        <h2 className="text-lg font-bold text-sidebar-foreground">Wide World Importers</h2>
-      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel>Módulos</SidebarGroupLabel>

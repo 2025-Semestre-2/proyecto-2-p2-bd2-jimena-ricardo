@@ -66,7 +66,7 @@ BEGIN
 END
 GO
 
-CREATE PROCEDURE sp_GetClienteDetalles
+CREATE OR ALTER PROCEDURE sp_GetClienteDetalles
     @CustomerID INT
 AS
 BEGIN
@@ -75,27 +75,20 @@ BEGIN
         c.CustomerName as nombre_cliente,
         cc.CustomerCategoryName as categoria,
         bg.BuyingGroupName as grupo_compra,
-        p.FullName as contacto_primario,
-        p2.FullName as contacto_alternativo,
         c.BillToCustomerID as cliente_facturar,
         dm.DeliveryMethodName as metodo_entrega,
-        city.CityName as ciudad_entrega,
-        c.DeliveryPostalCode as codigo_postal,
-        c.PhoneNumber as telefono,
-        c.FaxNumber as fax,
-        c.PaymentDays as dias_gracia_pago,
-        c.WebsiteURL as sitio_web,
-        c.DeliveryAddressLine1 as direccion_entrega,
-        c.DeliveryAddressLine2 as direccion_entrega2,
-        c.DeliveryPostalCode as codigo_postal_entrega,
-        c.DeliveryLocation.Lat as latitud, 
-        c.DeliveryLocation.Long as longitud  
+        c.CreditLimit as limite_credito,
+        c.AccountOpenedDate as fecha_apertura_cuenta,
+        c.StandardDiscountPercentage as descuento_estandar,
+        c.IsStatementSent as estado_cuenta_enviado,
+        c.IsOnCreditHold as credito_retenido,
+        c.PaymentDays as dias_pago,
+        c.DeliveryRun as ruta_entrega,
+        c.RunPosition as posicion_ruta,
+        c.WebsiteURL as sitio_web
     FROM Sales.Customers c
-    INNER JOIN Sales.CustomerCategories cc ON c.CustomerCategoryID = cc.CustomerCategoryID
-    INNER JOIN Application.DeliveryMethods dm ON c.DeliveryMethodID = dm.DeliveryMethodID
-    INNER JOIN Application.Cities city ON c.DeliveryCityID = city.CityID
-    LEFT JOIN Application.People p ON c.PrimaryContactPersonID = p.PersonID
-    LEFT JOIN Application.People p2 ON c.AlternateContactPersonID = p2.PersonID
+    LEFT JOIN Sales.CustomerCategories cc ON c.CustomerCategoryID = cc.CustomerCategoryID
+    LEFT JOIN Application.DeliveryMethods dm ON c.DeliveryMethodID = dm.DeliveryMethodID
     LEFT JOIN Sales.BuyingGroups bg ON c.BuyingGroupID = bg.BuyingGroupID
     WHERE c.CustomerID = @CustomerID;
 END
@@ -243,7 +236,7 @@ BEGIN
 END
 GO
 
-CREATE PROCEDURE sp_GetProductoDetalles
+CREATE OR ALTER PROCEDURE sp_GetProductoDetalles
     @StockItemID INT
 AS
 BEGIN
@@ -262,6 +255,10 @@ BEGIN
         si.UnitPrice as precio_unitario,
         si.RecommendedRetailPrice as precio_venta,
         si.LeadTimeDays as paso,
+        si.IsChillerStock as refrigerado,
+        si.TypicalWeightPerUnit as peso_typical,
+        si.MarketingComments as comentarios_marketing,
+        si.InternalComments as comentarios_internos,
         si.SearchDetails as palabras_claves,
         sih.QuantityOnHand as cantidad_disponible,
         si.Barcode as ubicacion
@@ -272,6 +269,164 @@ BEGIN
     LEFT JOIN Warehouse.StockItemHoldings sih ON si.StockItemID = sih.StockItemID
     LEFT JOIN Warehouse.Colors c ON si.ColorID = c.ColorID
     WHERE si.StockItemID = @StockItemID;
+END
+GO
+
+CREATE OR ALTER PROCEDURE sp_CreateProducto
+    @StockItemName NVARCHAR(100),
+    @SupplierID INT,
+    @ColorID INT = NULL,
+    @UnitPackageID INT,
+    @OuterPackageID INT,
+    @QuantityPerOuter INT,
+    @Brand NVARCHAR(50) = NULL,
+    @Size NVARCHAR(20) = NULL,
+    @TaxRate DECIMAL(18,3),
+    @UnitPrice DECIMAL(18,2),
+    @RecommendedRetailPrice DECIMAL(18,2) = NULL,
+    @LeadTimeDays INT,
+    @Barcode NVARCHAR(50) = NULL,
+    @IsChillerStock BIT = 0,
+    @TypicalWeightPerUnit DECIMAL(18,3) = NULL,
+    @MarketingComments NVARCHAR(MAX) = NULL,
+    @InternalComments NVARCHAR(MAX) = NULL
+AS
+BEGIN
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        INSERT INTO Warehouse.StockItems (
+            StockItemName, SupplierID, ColorID, UnitPackageID, OuterPackageID,
+            QuantityPerOuter, Brand, Size, TaxRate, UnitPrice, 
+            RecommendedRetailPrice, LeadTimeDays, Barcode,
+            IsChillerStock, TypicalWeightPerUnit, 
+            MarketingComments, InternalComments,
+            LastEditedBy
+        )
+        VALUES (
+            @StockItemName, @SupplierID, @ColorID, @UnitPackageID, @OuterPackageID,
+            @QuantityPerOuter, @Brand, @Size, @TaxRate, @UnitPrice,
+            @RecommendedRetailPrice, @LeadTimeDays, @Barcode,
+            @IsChillerStock, @TypicalWeightPerUnit,
+            @MarketingComments, @InternalComments,
+            1  -- Usuario por defecto
+        );
+
+        -- Insertar en StockItemHoldings con cantidad inicial 0
+        DECLARE @NewStockItemID INT = SCOPE_IDENTITY();
+        
+        INSERT INTO Warehouse.StockItemHoldings (
+            StockItemID, QuantityOnHand, BinLocation, LastStocktakeQuantity,
+            LastCostPrice, ReorderLevel, TargetStockLevel
+        )
+        VALUES (
+            @NewStockItemID, 0, @Barcode, 0, @UnitPrice, 0, 0
+        );
+
+        COMMIT TRANSACTION;
+        
+        SELECT @NewStockItemID AS NewStockItemID;
+        
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE OR ALTER PROCEDURE sp_UpdateProducto
+    @StockItemID INT,
+    @StockItemName NVARCHAR(100) = NULL,
+    @SupplierID INT = NULL,
+    @ColorID INT = NULL,
+    @UnitPackageID INT = NULL,
+    @OuterPackageID INT = NULL,
+    @QuantityPerOuter INT = NULL,
+    @Brand NVARCHAR(50) = NULL,
+    @Size NVARCHAR(20) = NULL,
+    @TaxRate DECIMAL(18,3) = NULL,
+    @UnitPrice DECIMAL(18,2) = NULL,
+    @RecommendedRetailPrice DECIMAL(18,2) = NULL,
+    @LeadTimeDays INT = NULL,
+    @Barcode NVARCHAR(50) = NULL,
+    @IsChillerStock BIT = NULL,
+    @TypicalWeightPerUnit DECIMAL(18,3) = NULL,
+    @MarketingComments NVARCHAR(MAX) = NULL,
+    @InternalComments NVARCHAR(MAX) = NULL
+AS
+BEGIN
+    UPDATE Warehouse.StockItems
+    SET 
+        StockItemName = ISNULL(@StockItemName, StockItemName),
+        SupplierID = ISNULL(@SupplierID, SupplierID),
+        ColorID = ISNULL(@ColorID, ColorID),
+        UnitPackageID = ISNULL(@UnitPackageID, UnitPackageID),
+        OuterPackageID = ISNULL(@OuterPackageID, OuterPackageID),
+        QuantityPerOuter = ISNULL(@QuantityPerOuter, QuantityPerOuter),
+        Brand = ISNULL(@Brand, Brand),
+        Size = ISNULL(@Size, Size),
+        TaxRate = ISNULL(@TaxRate, TaxRate),
+        UnitPrice = ISNULL(@UnitPrice, UnitPrice),
+        RecommendedRetailPrice = ISNULL(@RecommendedRetailPrice, RecommendedRetailPrice),
+        LeadTimeDays = ISNULL(@LeadTimeDays, LeadTimeDays),
+        Barcode = ISNULL(@Barcode, Barcode),
+        IsChillerStock = ISNULL(@IsChillerStock, IsChillerStock),
+        TypicalWeightPerUnit = ISNULL(@TypicalWeightPerUnit, TypicalWeightPerUnit),
+        MarketingComments = ISNULL(@MarketingComments, MarketingComments),
+        InternalComments = ISNULL(@InternalComments, InternalComments)
+    WHERE StockItemID = @StockItemID;
+
+    -- Si se actualiza el barcode, también actualizar en StockItemHoldings
+    IF @Barcode IS NOT NULL
+    BEGIN
+        UPDATE Warehouse.StockItemHoldings
+        SET BinLocation = @Barcode
+        WHERE StockItemID = @StockItemID;
+    END
+
+    SELECT @@ROWCOUNT AS FilasAfectadas;
+END
+GO
+
+CREATE PROCEDURE sp_DeleteProducto
+    @StockItemID INT
+AS
+BEGIN
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        -- Verificar si existen órdenes de venta relacionadas
+        IF EXISTS (SELECT 1 FROM Sales.OrderLines WHERE StockItemID = @StockItemID)
+        BEGIN
+            RAISERROR('No se puede eliminar el producto porque tiene órdenes de venta relacionadas.', 16, 1);
+            RETURN;
+        END
+
+        -- Verificar si existen órdenes de compra relacionadas
+        IF EXISTS (SELECT 1 FROM Purchasing.PurchaseOrderLines WHERE StockItemID = @StockItemID)
+        BEGIN
+            RAISERROR('No se puede eliminar el producto porque tiene órdenes de compra relacionadas.', 16, 1);
+            RETURN;
+        END
+
+        -- Eliminar de StockItemHoldings primero
+        DELETE FROM Warehouse.StockItemHoldings 
+        WHERE StockItemID = @StockItemID;
+
+        -- Eliminar de StockItems
+        DELETE FROM Warehouse.StockItems 
+        WHERE StockItemID = @StockItemID;
+
+        COMMIT TRANSACTION;
+        
+        SELECT 1 AS Eliminado;
+        
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
 END
 GO
 
@@ -433,43 +588,6 @@ BEGIN
     ORDER BY tipo_filtro, etiqueta;
 END
 GO
-
--- Vista para ciudades (útil para geolocalización)
-CREATE VIEW vw_Ciudades AS
-SELECT 
-    CityID,
-    CityName,
-    StateProvinceID,
-    LatestRecordedPopulation
-FROM Application.Cities;
-GO
-
--- Vista para métodos de entrega compartidos
-CREATE VIEW vw_MetodosEntrega AS
-SELECT 
-    DeliveryMethodID,
-    DeliveryMethodName
-FROM Application.DeliveryMethods
-WHERE DeliveryMethodName IS NOT NULL;
-GO
-
--- Vista para rangos de años disponibles
-CREATE VIEW vw_AniosDisponibles AS
-SELECT 
-    'ventas' as modulo,
-    YEAR(InvoiceDate) as anio
-FROM Sales.Invoices
-WHERE InvoiceDate IS NOT NULL
-GROUP BY YEAR(InvoiceDate)
-UNION ALL
-SELECT 
-    'compras' as modulo,
-    YEAR(OrderDate) as anio
-FROM Purchasing.PurchaseOrders
-WHERE OrderDate IS NOT NULL
-GROUP BY YEAR(OrderDate);
-GO
-
 
 CREATE PROCEDURE sp_GetAniosDisponibles
     @Modulo NVARCHAR(50) = NULL

@@ -4,9 +4,22 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Importar middlewares
+const { detectBranch, determineDatabase } = require('./config/database');
+
 app.use(cors());
 app.use(express.json());
 
+// Middleware para detectar IP y branch
+app.use(detectBranch);
+
+// Rutas públicas (sin autenticación)
+app.use('/api/auth', require('./routes/auth'));
+
+// Middleware para determinar base de datos según autenticación
+app.use(determineDatabase);
+
+// Rutas protegidas (requieren autenticación y determinación de BD)
 app.use('/api/clientes', require('./routes/clientes'));
 app.use('/api/proveedores', require('./routes/proveedores'));
 app.use('/api/inventarios', require('./routes/inventarios'));
@@ -14,6 +27,7 @@ app.use('/api/ventas', require('./routes/ventas'));
 app.use('/api/estadisticas', require('./routes/estadisticas'));
 app.use('/api/filtros', require('./routes/filtros'));
 
+// Ruta de geocodificación (pública)
 app.get('/api/geocode', async (req, res) => {
   try {
     const { address } = req.query;
@@ -53,7 +67,9 @@ app.get('/api/geocode', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    branch: req.branch,
+    database: req.database || 'No determinado'
   });
 });
 

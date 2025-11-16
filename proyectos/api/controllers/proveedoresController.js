@@ -1,69 +1,59 @@
-const { poolPromise } = require('../config/database');
+const { getConnection, sql } = require('../config/database');
 
-exports.getProveedores = async (req, res) => {
-  try {
-    const { 
-      pagina = 1, 
-      tamanoPagina = 50, 
-      nombre, 
-      categoria, 
-      metodoEntrega 
-    } = req.query;
-    
-    const pool = await poolPromise;
-    const request = pool.request();
-    
-    // Parámetros de paginación
-    request.input('PageNumber', parseInt(pagina));
-    request.input('PageSize', parseInt(tamanoPagina));
-    
-    // Parámetros de filtro
-    if (nombre) request.input('FiltroNombre', nombre);
-    if (categoria) request.input('FiltroCategoria', categoria);
-    if (metodoEntrega) request.input('FiltroMetodoEntrega', metodoEntrega);
-    
-    const result = await request.execute('sp_GetProveedores');
-    res.json(result.recordset);
-  } catch (error) {
-    console.error('Error en getProveedores:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
+const proveedoresController = {
+  getProveedores: async (req, res) => {
+    try {
+      const pool = await getConnection(req.database);
+      const { page = 1, pageSize = 50, filtroNombre, filtroCategoria, filtroMetodoEntrega } = req.query;
 
-exports.getTotalProveedores = async (req, res) => {
-  try {
-    const { nombre, categoria, metodoEntrega } = req.query;
-    const pool = await poolPromise;
-    
-    const request = pool.request();
-    if (nombre) request.input('FiltroNombre', nombre);
-    if (categoria) request.input('FiltroCategoria', categoria);
-    if (metodoEntrega) request.input('FiltroMetodoEntrega', metodoEntrega);
-    
-    const result = await request.execute('sp_GetTotalProveedores');
-    res.json(result.recordset[0]);
-  } catch (error) {
-    console.error('Error en getTotalProveedores:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
+      const result = await pool.request()
+        .input('PageNumber', sql.Int, parseInt(page))
+        .input('PageSize', sql.Int, parseInt(pageSize))
+        .input('FiltroNombre', sql.NVarChar(100), filtroNombre || null)
+        .input('FiltroCategoria', sql.NVarChar(100), filtroCategoria || null)
+        .input('FiltroMetodoEntrega', sql.NVarChar(100), filtroMetodoEntrega || null)
+        .execute('sp_GetProveedores');
 
-exports.getProveedorById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const pool = await poolPromise;
-    
-    const result = await pool.request()
-      .input('SupplierID', parseInt(id))
-      .execute('sp_GetProveedorDetalles');
-    
-    if (result.recordset.length === 0) {
-      return res.status(404).json({ error: 'Proveedor no encontrado' });
+      // Obtener total
+      const totalResult = await pool.request()
+        .input('FiltroNombre', sql.NVarChar(100), filtroNombre || null)
+        .input('FiltroCategoria', sql.NVarChar(100), filtroCategoria || null)
+        .input('FiltroMetodoEntrega', sql.NVarChar(100), filtroMetodoEntrega || null)
+        .execute('sp_GetTotalProveedores');
+
+      res.json({
+        proveedores: result.recordset,
+        pagination: {
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          total: totalResult.recordset[0].Total
+        }
+      });
+    } catch (error) {
+      console.error('Error en getProveedores:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
     }
-    
-    res.json(result.recordset[0]);
-  } catch (error) {
-    console.error('Error en getProveedorById:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+  },
+
+  getProveedorDetalles: async (req, res) => {
+    try {
+      const pool = await getConnection(req.database);
+      const { id } = req.params;
+
+      const result = await pool.request()
+        .input('SupplierID', sql.Int, parseInt(id))
+        .execute('sp_GetProveedorDetalles');
+
+      if (result.recordset.length === 0) {
+        return res.status(404).json({ error: 'Proveedor no encontrado' });
+      }
+
+      res.json(result.recordset[0]);
+    } catch (error) {
+      console.error('Error en getProveedorDetalles:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
   }
 };
+
+module.exports = proveedoresController;

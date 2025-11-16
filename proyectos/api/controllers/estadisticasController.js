@@ -1,103 +1,116 @@
-const { poolPromise } = require('../config/database');
+const { getConnection, sql } = require('../config/database');
 
-exports.getEstadisticasCompras = async (req, res) => {
-  try {
-    const { 
-      pagina = 1, 
-      tamanoPagina = 50,
-      filtro 
-    } = req.query;
-    
-    const pool = await poolPromise;
-    const request = pool.request();
-    
-    // Parámetros de paginación
-    request.input('PageNumber', parseInt(pagina));
-    request.input('PageSize', parseInt(tamanoPagina));
-    
-    // Parámetros de filtro
-    if (filtro) request.input('Filtro', filtro);
-    
-    const result = await request.execute('sp_EstadisticasComprasProveedores');
-    res.json(result.recordset);
-  } catch (error) {
-    console.error('Error en getEstadisticasCompras:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+const estadisticasController = {
+  getEstadisticasComprasProveedores: async (req, res) => {
+    try {
+      // Estadísticas siempre se consultan desde corporativo
+      const pool = await getConnection('CORP');
+      const { page = 1, pageSize = 50, filtro } = req.query;
+
+      const result = await pool.request()
+        .input('PageNumber', sql.Int, parseInt(page))
+        .input('PageSize', sql.Int, parseInt(pageSize))
+        .input('Filtro', sql.NVarChar(100), filtro || null)
+        .execute('sp_EstadisticasComprasProveedores');
+
+      res.json({
+        estadisticas: result.recordset,
+        pagination: {
+          page: parseInt(page),
+          pageSize: parseInt(pageSize)
+        }
+      });
+    } catch (error) {
+      console.error('Error en getEstadisticasComprasProveedores:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+
+  getEstadisticasVentasClientes: async (req, res) => {
+    try {
+      const pool = await getConnection('CORP');
+      const { page = 1, pageSize = 50, filtro } = req.query;
+
+      const result = await pool.request()
+        .input('PageNumber', sql.Int, parseInt(page))
+        .input('PageSize', sql.Int, parseInt(pageSize))
+        .input('Filtro', sql.NVarChar(100), filtro || null)
+        .execute('sp_EstadisticasVentasClientes');
+
+      res.json({
+        estadisticas: result.recordset,
+        pagination: {
+          page: parseInt(page),
+          pageSize: parseInt(pageSize)
+        }
+      });
+    } catch (error) {
+      console.error('Error en getEstadisticasVentasClientes:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+
+  getTop5ProductosGanancia: async (req, res) => {
+    try {
+      const pool = await getConnection('CORP');
+      const { anio } = req.query;
+
+      if (!anio) {
+        return res.status(400).json({ error: 'El parámetro año es requerido' });
+      }
+
+      const result = await pool.request()
+        .input('Anio', sql.Int, parseInt(anio))
+        .execute('sp_Top5ProductosGanancia');
+
+      res.json(result.recordset);
+    } catch (error) {
+      console.error('Error en getTop5ProductosGanancia:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+
+  getTop5ClientesFacturas: async (req, res) => {
+    try {
+      const pool = await getConnection('CORP');
+      const { anioInicio, anioFin } = req.query;
+
+      if (!anioInicio || !anioFin) {
+        return res.status(400).json({ error: 'Los parámetros anioInicio y anioFin son requeridos' });
+      }
+
+      const result = await pool.request()
+        .input('AnioInicio', sql.Int, parseInt(anioInicio))
+        .input('AnioFin', sql.Int, parseInt(anioFin))
+        .execute('sp_Top5ClientesFacturas');
+
+      res.json(result.recordset);
+    } catch (error) {
+      console.error('Error en getTop5ClientesFacturas:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
+  },
+
+  getTop5ProveedoresOrdenes: async (req, res) => {
+    try {
+      const pool = await getConnection('CORP');
+      const { anioInicio, anioFin } = req.query;
+
+      if (!anioInicio || !anioFin) {
+        return res.status(400).json({ error: 'Los parámetros anioInicio y anioFin son requeridos' });
+      }
+
+      const result = await pool.request()
+        .input('AnioInicio', sql.Int, parseInt(anioInicio))
+        .input('AnioFin', sql.Int, parseInt(anioFin))
+        .execute('sp_Top5ProveedoresOrdenes');
+
+      res.json(result.recordset);
+    } catch (error) {
+      console.error('Error en getTop5ProveedoresOrdenes:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
   }
 };
 
-exports.getEstadisticasVentas = async (req, res) => {
-  try {
-    const { 
-      pagina = 1, 
-      tamanoPagina = 50,
-      filtro 
-    } = req.query;
-    
-    const pool = await poolPromise;
-    const request = pool.request();
-    
-    // Parámetros de paginación
-    request.input('PageNumber', parseInt(pagina));
-    request.input('PageSize', parseInt(tamanoPagina));
-    
-    // Parámetros de filtro
-    if (filtro) request.input('Filtro', filtro);
-    
-    const result = await request.execute('sp_EstadisticasVentasClientes');
-    res.json(result.recordset);
-  } catch (error) {
-    console.error('Error en getEstadisticasVentas:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
-
-exports.getTop5Productos = async (req, res) => {
-  try {
-    const { anio } = req.query;
-    const pool = await poolPromise;
-    
-    const result = await pool.request()
-      .input('Anio', parseInt(anio))
-      .execute('sp_Top5ProductosGanancia');
-    
-    res.json(result.recordset);
-  } catch (error) {
-    console.error('Error en getTop5Productos:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
-
-exports.getTop5Clientes = async (req, res) => {
-  try {
-    const { anioInicio, anioFin } = req.query;
-    const pool = await poolPromise;
-    
-    const result = await pool.request()
-      .input('AnioInicio', parseInt(anioInicio))
-      .input('AnioFin', parseInt(anioFin))
-      .execute('sp_Top5ClientesFacturas');
-    
-    res.json(result.recordset);
-  } catch (error) {
-    console.error('Error en getTop5Clientes:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
-
-exports.getTop5Proveedores = async (req, res) => {
-  try {
-    const { anioInicio, anioFin } = req.query;
-    const pool = await poolPromise;
-    
-    const result = await pool.request()
-      .input('AnioInicio', parseInt(anioInicio))
-      .input('AnioFin', parseInt(anioFin))
-      .execute('sp_Top5ProveedoresOrdenes');
-    
-    res.json(result.recordset);
-  } catch (error) {
-    console.error('Error en getTop5Proveedores:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
+module.exports = estadisticasController;

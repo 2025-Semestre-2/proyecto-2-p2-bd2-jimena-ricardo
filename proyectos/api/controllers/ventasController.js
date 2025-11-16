@@ -1,91 +1,84 @@
-const { poolPromise } = require('../config/database');
+const { getConnection, sql } = require('../config/database');
 
-exports.getVentas = async (req, res) => {
-  try {
-    const { 
-      pagina = 1, 
-      tamanoPagina = 50,
-      cliente, 
-      fechaInicio, 
-      fechaFin, 
-      metodoEntrega,
-      montoMin, 
-      montoMax 
-    } = req.query;
-    
-    const pool = await poolPromise;
-    const request = pool.request();
-    
-    // Parámetros de paginación
-    request.input('PageNumber', parseInt(pagina));
-    request.input('PageSize', parseInt(tamanoPagina));
-    
-    // Parámetros de filtro
-    if (cliente) request.input('FiltroCliente', cliente);
-    if (fechaInicio) request.input('FechaInicio', fechaInicio);
-    if (fechaFin) request.input('FechaFin', fechaFin);
-    if (metodoEntrega) request.input('MetodoEntrega', metodoEntrega);
-    if (montoMin) request.input('MontoMin', parseFloat(montoMin));
-    if (montoMax) request.input('MontoMax', parseFloat(montoMax));
-    
-    const result = await request.execute('sp_GetVentas');
-    res.json(result.recordset);
-  } catch (error) {
-    console.error('Error en getVentas:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
+const ventasController = {
+  getVentas: async (req, res) => {
+    try {
+      const pool = await getConnection(req.database);
+      const { 
+        page = 1, 
+        pageSize = 50, 
+        filtroCliente, 
+        fechaInicio, 
+        fechaFin, 
+        metodoEntrega,
+        montoMin,
+        montoMax
+      } = req.query;
 
-exports.getTotalVentas = async (req, res) => {
-  try {
-    const { 
-      cliente, 
-      fechaInicio, 
-      fechaFin, 
-      metodoEntrega,
-      montoMin, 
-      montoMax 
-    } = req.query;
-    
-    const pool = await poolPromise;
-    const request = pool.request();
-    
-    // Parámetros de filtro
-    if (cliente) request.input('FiltroCliente', cliente);
-    if (fechaInicio) request.input('FechaInicio', fechaInicio);
-    if (fechaFin) request.input('FechaFin', fechaFin);
-    if (metodoEntrega) request.input('MetodoEntrega', metodoEntrega);
-    if (montoMin) request.input('MontoMin', parseFloat(montoMin));
-    if (montoMax) request.input('MontoMax', parseFloat(montoMax));
-    
-    const result = await request.execute('sp_GetTotalVentas');
-    res.json(result.recordset[0]);
-  } catch (error) {
-    console.error('Error en getTotalVentas:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
-};
+      const result = await pool.request()
+        .input('PageNumber', sql.Int, parseInt(page))
+        .input('PageSize', sql.Int, parseInt(pageSize))
+        .input('FiltroCliente', sql.NVarChar(100), filtroCliente || null)
+        .input('FechaInicio', sql.Date, fechaInicio || null)
+        .input('FechaFin', sql.Date, fechaFin || null)
+        .input('MetodoEntrega', sql.NVarChar(100), metodoEntrega || null)
+        .input('MontoMin', sql.Decimal(18, 2), montoMin ? parseFloat(montoMin) : null)
+        .input('MontoMax', sql.Decimal(18, 2), montoMax ? parseFloat(montoMax) : null)
+        .execute('sp_GetVentas');
 
-exports.getVentaById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const pool = await poolPromise;
-    
-    const result = await pool.request()
-      .input('InvoiceID', parseInt(id))
-      .execute('sp_GetVentaDetalles');
-    
-    if (result.recordsets.length === 0) {
-      return res.status(404).json({ error: 'Venta no encontrada' });
+      // Obtener total
+      const totalResult = await pool.request()
+        .input('FiltroCliente', sql.NVarChar(100), filtroCliente || null)
+        .input('FechaInicio', sql.Date, fechaInicio || null)
+        .input('FechaFin', sql.Date, fechaFin || null)
+        .input('MetodoEntrega', sql.NVarChar(100), metodoEntrega || null)
+        .input('MontoMin', sql.Decimal(18, 2), montoMin ? parseFloat(montoMin) : null)
+        .input('MontoMax', sql.Decimal(18, 2), montoMax ? parseFloat(montoMax) : null)
+        .execute('sp_GetTotalVentas');
+
+      res.json({
+        ventas: result.recordset,
+        pagination: {
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          total: totalResult.recordset[0].Total
+        }
+      });
+    } catch (error) {
+      console.error('Error en getVentas:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
     }
-    
-    const [encabezado, detalles] = result.recordsets;
-    res.json({
-      encabezado: encabezado[0] || {},
-      detalles: detalles || []
-    });
-  } catch (error) {
-    console.error('Error en getVentaById:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
+  },
+
+  getVentaDetalles: async (req, res) => {
+    try {
+      const pool = await getConnection(req.database);
+      const { id } = req.params;
+
+      const result = await pool.request()
+        .input('InvoiceID', sql.Int, parseInt(id))
+        .execute('sp_GetVentaDetalles');
+
+      if (result.recordset.length === 0) {
+        return res.status(404).json({ error: 'Venta no encontrada' });
+      }
+
+      // El procedimiento devuelve múltiples resultsets
+      const encabezado = result.recordset[0];
+      
+      // Avanzar al siguiente resultset para los detalles
+      const nextResult = await result.nextResult();
+      const detalles = nextResult.recordset;
+
+      res.json({
+        encabezado,
+        detalles
+      });
+    } catch (error) {
+      console.error('Error en getVentaDetalles:', error);
+      res.status(500).json({ error: 'Error interno del servidor' });
+    }
   }
 };
+
+module.exports = ventasController;

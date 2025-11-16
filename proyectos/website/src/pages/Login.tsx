@@ -15,9 +15,8 @@ interface LoginResponse {
     fullname: string;
     rol: string;
     email: string;
-    hiredate: string;
+    branch: string;
   };
-  token?: string;
   message?: string;
 }
 
@@ -30,86 +29,54 @@ export default function Login() {
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+  e.preventDefault();
+  setLoading(true);
+  setError("");
 
-    try {
-      // TODO: Reemplazar con el endpoint real cuando esté disponible
-      // const response = await fetch('http://localhost:3000/api/usuarios/login', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json',
-      //   },
-      //   body: JSON.stringify({ username, password }),
-      // });
+  try {
+    console.log('🔄 [FRONTEND] Enviando credenciales:', { username, password });
+    
+    const response = await fetch('http://localhost:3000/api/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+    });
 
-      // Simulación de respuesta hasta que el endpoint esté disponible
-      const mockResponse: LoginResponse = await new Promise((resolve) => {
-        setTimeout(() => {
-          // Simulación de credenciales válidas
-          if (username === "admin" && password === "admin123") {
-            resolve({
-              success: true,
-              user: {
-                id: 1,
-                username: "admin",
-                fullname: "Jimena Mendez",
-                rol: "Administrador",
-                email: "admin@sucursal.com",
-                hiredate: "2024-01-15"
-              },
-              token: "mock-jwt-token"
-            });
-          } else if (username === "corporativo" && password === "corp123") {
-            resolve({
-              success: true,
-              user: {
-                id: 2,
-                username: "corporativo",
-                fullname: "Usuario Corporativo",
-                rol: "Corporativo",
-                email: "corp@wideworld.com",
-                hiredate: "2024-01-10"
-              },
-              token: "mock-jwt-token"
-            });
-          } else {
-            resolve({
-              success: false,
-              message: "Credenciales inválidas"
-            });
-          }
-        }, 1000);
-      });
+    console.log('📡 [FRONTEND] Respuesta del servidor:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
 
-      if (mockResponse.success && mockResponse.user) {
-        // Guardar información del usuario en localStorage
-        localStorage.setItem('user', JSON.stringify(mockResponse.user));
-        localStorage.setItem('token', mockResponse.token || '');
-        
-        // Redirigir según el rol
-        if (mockResponse.user.rol === "Corporativo") {
-          navigate("/estadisticas");
-        } else {
-          navigate("/");
-        }
+    const data = await response.json();
+    console.log('📊 [FRONTEND] Datos de respuesta:', data);
+
+    if (response.ok && data.success) {
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      if (data.user.rol === "corporativo") {
+        navigate("/estadisticas");
       } else {
-        setError(mockResponse.message || "Error en el inicio de sesión");
+        navigate("/");
       }
-    } catch (err) {
-      console.error('Error en login:', err);
-      setError("Error de conexión. Intente nuevamente.");
-    } finally {
-      setLoading(false);
+    } else {
+      setError(data.error || data.message || "Credenciales inválidas");
     }
-  };
+  } catch (err) {
+    console.error('💥 [FRONTEND] Error completo:', err);
+    setError("Error de conexión. Verifique que el servidor esté ejecutándose.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Verificar si ya está autenticado
-  const isAuthenticated = localStorage.getItem('user');
-  if (isAuthenticated) {
-    const user = JSON.parse(isAuthenticated);
-    if (user.rol === "Corporativo") {
+  const userStr = localStorage.getItem('user');
+  if (userStr) {
+    const user = JSON.parse(userStr);
+    if (user.rol === "corporativo") {
       navigate("/estadisticas");
     } else {
       navigate("/");
@@ -173,6 +140,13 @@ export default function Login() {
                   )}
                 </Button>
               </div>
+            </div>
+
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p><strong>Usuarios de prueba:</strong></p>
+              <p>• admin.sj / password123 (Admin San José)</p>
+              <p>• admin.lm / password123 (Admin Limón)</p>
+              <p>• corporativo / password123 (Corporativo)</p>
             </div>
 
             <Button 

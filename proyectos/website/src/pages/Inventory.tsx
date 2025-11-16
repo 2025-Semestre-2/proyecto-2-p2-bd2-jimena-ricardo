@@ -5,9 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RotateCcw, Link as LinkIcon, ExternalLink, Plus, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, RotateCcw, ExternalLink, Plus, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Swing } from 'swing';
 
 // Interfaces para tipado
 interface Product {
@@ -18,20 +17,20 @@ interface Product {
 }
 
 interface ProductDetails {
-  ProductID: number;
+  StockItemID: number;
   nombre_producto: string;
   nombre_proveedor: string;
-  proveedor_id?: number;
+  proveedor_id: number;
   color: string;
   unidad_empaquetamiento: string;
   empaquetamiento_externo: string;
   cantidad_empaquetamiento: number;
   marca: string;
-  talla_tamano: string;
+  tamano: string;
   impuesto: number;
   precio_unitario: number;
   precio_venta: number;
-  paso: string;
+  paso: number;
   palabras_clave: string;
   cantidad_disponible: number;
   ubicacion: string;
@@ -46,21 +45,33 @@ interface Filtro {
 
 // Interface para el formulario de producto
 interface ProductFormData {
-  nombre_producto: string;
-  proveedor_id: number;
-  color: string;
-  unidad_empaquetamiento: string;
-  empaquetamiento_externo: string;
-  cantidad_empaquetamiento: number;
-  marca: string;
-  talla_tamano: string;
-  impuesto: number;
-  precio_unitario: number;
-  precio_venta: number;
-  paso: string;
-  palabras_clave: string;
-  cantidad_disponible: number;
-  ubicacion: string;
+  StockItemName: string;
+  SupplierID: number;
+  ColorID?: number;
+  UnitPackageID: number;
+  OuterPackageID: number;
+  QuantityPerOuter: number;
+  Brand?: string;
+  Size?: string;
+  TaxRate: number;
+  UnitPrice: number;
+  RecommendedRetailPrice?: number;
+  LeadTimeDays: number;
+  Barcode?: string;
+  IsChillerStock?: boolean;
+  TypicalWeightPerUnit?: number;
+  MarketingComments?: string;
+  InternalComments?: string;
+}
+
+// Interface para la respuesta de la API
+interface ApiResponse {
+  inventarios: Product[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
 }
 
 export default function Inventory() {
@@ -83,25 +94,27 @@ export default function Inventory() {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductDetails | null>(null);
   const [formData, setFormData] = useState<ProductFormData>({
-    nombre_producto: '',
-    proveedor_id: 0,
-    color: '',
-    unidad_empaquetamiento: '',
-    empaquetamiento_externo: '',
-    cantidad_empaquetamiento: 0,
-    marca: '',
-    talla_tamano: '',
-    impuesto: 0,
-    precio_unitario: 0,
-    precio_venta: 0,
-    paso: '',
-    palabras_clave: '',
-    cantidad_disponible: 0,
-    ubicacion: ''
+    StockItemName: '',
+    SupplierID: 0,
+    ColorID: undefined,
+    UnitPackageID: 0,
+    OuterPackageID: 0,
+    QuantityPerOuter: 0,
+    Brand: '',
+    Size: '',
+    TaxRate: 0,
+    UnitPrice: 0,
+    RecommendedRetailPrice: 0,
+    LeadTimeDays: 0,
+    Barcode: '',
+    IsChillerStock: false,
+    TypicalWeightPerUnit: 0,
+    MarketingComments: '',
+    InternalComments: ''
   });
   const [formLoading, setFormLoading] = useState(false);
   
-  // Estados para los filtros dinámicos - SOLO GRUPOS
+  // Estados para los filtros dinámicos
   const [grupos, setGrupos] = useState<Filtro[]>([]);
   const [filtrosLoading, setFiltrosLoading] = useState(true);
 
@@ -110,12 +123,10 @@ export default function Inventory() {
 
   // Cargar productos iniciales y filtros
   useEffect(() => {
-    // Verificar si hay parámetros de navegación para producto
     const state = location.state as { initialSearch?: string; autoSearch?: boolean };
     
     if (state?.initialSearch) {
       setSearchTerm(state.initialSearch);
-      // Si autoSearch es true, realizar búsqueda automática
       if (state.autoSearch) {
         setTimeout(() => {
           fetchProducts(state.initialSearch, groupFilter);
@@ -146,8 +157,6 @@ export default function Inventory() {
       }
       
       const data: Filtro[] = await response.json();
-      
-      // SOLO cargar grupos (quitamos marcas y colores)
       setGrupos(data.filter(filtro => filtro.tipo_filtro === 'grupos'));
       
     } catch (err) {
@@ -163,10 +172,10 @@ export default function Inventory() {
       setError(null);
       
       const params = new URLSearchParams();
-      params.append('pagina', paginaActual.toString());
-      params.append('tamanoPagina', tamanoPagina.toString());
-      if (nombre) params.append('nombre', nombre);
-      if (grupo && grupo !== 'all') params.append('grupo', grupo);
+      params.append('page', paginaActual.toString());
+      params.append('pageSize', tamanoPagina.toString());
+      if (nombre) params.append('filtroNombre', nombre);
+      if (grupo && grupo !== 'all') params.append('filtroGrupo', grupo);
       
       const url = `http://localhost:3000/api/inventarios?${params.toString()}`;
       
@@ -176,11 +185,13 @@ export default function Inventory() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setProducts(data);
+      const data: ApiResponse = await response.json();
+      setProducts(data.inventarios || []);
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching products:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los productos');
+      setProducts([]);
     } finally {
       setLoading(false);
     }
@@ -190,10 +201,10 @@ export default function Inventory() {
     try {
       setCargandoTotal(true);
       const params = new URLSearchParams();
-      if (searchTerm) params.append('nombre', searchTerm);
-      if (groupFilter && groupFilter !== 'all') params.append('grupo', groupFilter);
+      if (searchTerm) params.append('filtroNombre', searchTerm);
+      if (groupFilter && groupFilter !== 'all') params.append('filtroGrupo', groupFilter);
       
-      const url = `http://localhost:3000/api/inventarios/total?${params.toString()}`;
+      const url = `http://localhost:3000/api/inventarios?${params.toString()}&page=1&pageSize=1`;
       
       const response = await fetch(url);
       
@@ -201,8 +212,8 @@ export default function Inventory() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setTotalRegistros(data.Total || 0);
+      const data: ApiResponse = await response.json();
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching total products:', err);
       setTotalRegistros(0);
@@ -228,25 +239,32 @@ export default function Inventory() {
     }
   };
 
-  // Funciones CRUD (Simuladas - Comentadas hasta que estén los SPs)
+  // FUNCIONES CRUD CON REPLICACIÓN AUTOMÁTICA
+  // NOTA: La replicación se maneja automáticamente en los stored procedures
+  // sp_CreateProducto, sp_UpdateProducto, sp_DeleteProducto
+
   const crearProducto = async (productoData: ProductFormData) => {
     try {
       setFormLoading(true);
       
-      // SIMULACIÓN - Reemplazar con endpoint real cuando esté disponible
-      // const response = await fetch('http://localhost:3000/api/inventarios', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(productoData)
-      // });
+      const response = await fetch('http://localhost:3000/api/inventarios', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productoData)
+      });
       
-      // if (!response.ok) throw new Error('Error al crear producto');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al crear producto');
+      }
       
-      // Simulación de éxito
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await response.json();
       
-      // Mostrar alerta de éxito
-      Swing.success('Producto creado exitosamente');
+      // Éxito - El producto se replicará automáticamente a todas las bases de datos
+      // mediante triggers o procesos de replicación configurados en SQL Server
+      alert('✅ Producto creado exitosamente. Se replicará automáticamente a todas las sucursales.');
       
       // Recargar productos
       fetchProducts();
@@ -255,7 +273,7 @@ export default function Inventory() {
       
     } catch (err) {
       console.error('Error creando producto:', err);
-      Swing.error('Error al crear el producto');
+      alert(`❌ Error al crear el producto: ${err instanceof Error ? err.message : 'Error desconocido'}`);
     } finally {
       setFormLoading(false);
     }
@@ -265,20 +283,23 @@ export default function Inventory() {
     try {
       setFormLoading(true);
       
-      // SIMULACIÓN - Reemplazar con endpoint real cuando esté disponible
-      // const response = await fetch(`http://localhost:3000/api/inventarios/${id}`, {
-      //   method: 'PUT',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(productoData)
-      // });
+      const response = await fetch(`http://localhost:3000/api/inventarios/${id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productoData)
+      });
       
-      // if (!response.ok) throw new Error('Error al modificar producto');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al modificar producto');
+      }
       
-      // Simulación de éxito
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await response.json();
       
-      // Mostrar alerta de éxito
-      Swing.success('Producto modificado exitosamente');
+      // Éxito - La modificación se replicará automáticamente
+      alert('✅ Producto modificado exitosamente. Los cambios se replicarán automáticamente a todas las sucursales.');
       
       // Recargar productos
       fetchProducts();
@@ -288,7 +309,7 @@ export default function Inventory() {
       
     } catch (err) {
       console.error('Error modificando producto:', err);
-      Swing.error('Error al modificar el producto');
+      alert(`❌ Error al modificar el producto: ${err instanceof Error ? err.message : 'Error desconocido'}`);
     } finally {
       setFormLoading(false);
     }
@@ -297,22 +318,23 @@ export default function Inventory() {
   const eliminarProducto = async (id: number) => {
     try {
       // Confirmación antes de eliminar
-      if (!confirm('¿Estás seguro de que deseas eliminar este producto?')) {
+      if (!confirm('¿Estás seguro de que deseas eliminar este producto?\n\nEsta acción eliminará el producto de todas las sucursales.')) {
         return;
       }
       
-      // SIMULACIÓN - Reemplazar con endpoint real cuando esté disponible
-      // const response = await fetch(`http://localhost:3000/api/inventarios/${id}`, {
-      //   method: 'DELETE'
-      // });
+      const response = await fetch(`http://localhost:3000/api/inventarios/${id}`, {
+        method: 'DELETE'
+      });
       
-      // if (!response.ok) throw new Error('Error al eliminar producto');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al eliminar producto');
+      }
       
-      // Simulación de éxito
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const result = await response.json();
       
-      // Mostrar alerta de éxito
-      Swing.success('Producto eliminado exitosamente');
+      // Éxito - La eliminación se replicará automáticamente
+      alert('✅ Producto eliminado exitosamente. Se eliminará automáticamente de todas las sucursales.');
       
       // Recargar productos
       fetchProducts();
@@ -320,28 +342,37 @@ export default function Inventory() {
       
     } catch (err) {
       console.error('Error eliminando producto:', err);
-      Swing.error('Error al eliminar el producto');
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+      
+      // Manejar errores específicos de restricciones de base de datos
+      if (errorMessage.includes('órdenes de venta') || errorMessage.includes('órdenes de compra')) {
+        alert(`❌ No se puede eliminar el producto: ${errorMessage}`);
+      } else {
+        alert(`❌ Error al eliminar el producto: ${errorMessage}`);
+      }
     }
   };
 
   // Función para resetear el formulario
   const resetForm = () => {
     setFormData({
-      nombre_producto: '',
-      proveedor_id: 0,
-      color: '',
-      unidad_empaquetamiento: '',
-      empaquetamiento_externo: '',
-      cantidad_empaquetamiento: 0,
-      marca: '',
-      talla_tamano: '',
-      impuesto: 0,
-      precio_unitario: 0,
-      precio_venta: 0,
-      paso: '',
-      palabras_clave: '',
-      cantidad_disponible: 0,
-      ubicacion: ''
+      StockItemName: '',
+      SupplierID: 0,
+      ColorID: undefined,
+      UnitPackageID: 0,
+      OuterPackageID: 0,
+      QuantityPerOuter: 0,
+      Brand: '',
+      Size: '',
+      TaxRate: 0,
+      UnitPrice: 0,
+      RecommendedRetailPrice: 0,
+      LeadTimeDays: 0,
+      Barcode: '',
+      IsChillerStock: false,
+      TypicalWeightPerUnit: 0,
+      MarketingComments: '',
+      InternalComments: ''
     });
   };
 
@@ -356,21 +387,23 @@ export default function Inventory() {
   const abrirFormularioEditar = (producto: ProductDetails) => {
     setEditingProduct(producto);
     setFormData({
-      nombre_producto: producto.nombre_producto,
-      proveedor_id: producto.proveedor_id || 0,
-      color: producto.color,
-      unidad_empaquetamiento: producto.unidad_empaquetamiento,
-      empaquetamiento_externo: producto.empaquetamiento_externo,
-      cantidad_empaquetamiento: producto.cantidad_empaquetamiento,
-      marca: producto.marca,
-      talla_tamano: producto.talla_tamano,
-      impuesto: producto.impuesto,
-      precio_unitario: producto.precio_unitario,
-      precio_venta: producto.precio_venta,
-      paso: producto.paso,
-      palabras_clave: producto.palabras_clave,
-      cantidad_disponible: producto.cantidad_disponible,
-      ubicacion: producto.ubicacion
+      StockItemName: producto.nombre_producto,
+      SupplierID: producto.proveedor_id,
+      // ColorID: producto.color_id, // Necesitarías mapear el color a un ID
+      UnitPackageID: 0, // Necesitarías mapear el empaquetamiento a un ID
+      OuterPackageID: 0, // Necesitarías mapear el empaquetamiento externo a un ID
+      QuantityPerOuter: producto.cantidad_empaquetamiento,
+      Brand: producto.marca,
+      Size: producto.tamano,
+      TaxRate: producto.impuesto,
+      UnitPrice: producto.precio_unitario,
+      RecommendedRetailPrice: producto.precio_venta,
+      LeadTimeDays: producto.paso,
+      Barcode: producto.ubicacion,
+      IsChillerStock: false, // Necesitarías obtener este dato
+      TypicalWeightPerUnit: 0, // Necesitarías obtener este dato
+      MarketingComments: '',
+      InternalComments: ''
     });
     setShowForm(true);
   };
@@ -379,7 +412,7 @@ export default function Inventory() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingProduct) {
-      modificarProducto(editingProduct.ProductID, formData);
+      modificarProducto(editingProduct.StockItemID, formData);
     } else {
       crearProducto(formData);
     }
@@ -397,7 +430,7 @@ export default function Inventory() {
   };
 
   const handleSearch = () => {
-    setPaginaActual(1); // Resetear a primera página al buscar
+    setPaginaActual(1);
     fetchProducts(searchTerm, groupFilter);
   };
 
@@ -437,13 +470,28 @@ export default function Inventory() {
     }
   }, [paginaActual, tamanoPagina]);
 
+  // Formatear moneda
+  const formatCurrency = (amount: number) => {
+    if (!amount) return "N/A";
+    return new Intl.NumberFormat('es-CR', {
+      style: 'currency',
+      currency: 'CRC'
+    }).format(amount);
+  };
+
   return (
     <div className="space-y-6 animate-fade-up">
       <div className="bg-gradient-to-r from-green-500/10 to-green-600/10 rounded-xl p-6 border border-green-500/20">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-green-700 dark:text-green-400">Inventarios</h1>
-            <p className="text-muted-foreground mt-2">Consulta y gestiona los productos en inventario</p>
+            <p className="text-muted-foreground mt-2">
+              Consulta y gestiona los productos en inventario
+              <br />
+              <span className="text-xs text-green-600">
+                🔄 Los cambios se replican automáticamente a todas las sucursales
+              </span>
+            </p>
           </div>
           <Button onClick={abrirFormularioCrear} className="bg-green-600 hover:bg-green-700">
             <Plus className="h-4 w-4 mr-2" />
@@ -458,7 +506,7 @@ export default function Inventory() {
         </Card>
       )}
 
-      {/* Filtros principales - SOLO NOMBRE Y GRUPO */}
+      {/* Filtros principales */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ animationDelay: '100ms' }}>
         <Card className="p-6 hover-lift">
           <label className="text-sm font-medium mb-2 block">Buscar por nombre</label>
@@ -546,11 +594,17 @@ export default function Inventory() {
       <Card className="overflow-hidden shadow-lg animate-fade-in" style={{ animationDelay: '200ms' }}>
         {loading ? (
           <div className="p-8 text-center">
-            <p>Cargando productos...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2">Cargando productos...</p>
           </div>
         ) : products.length === 0 ? (
           <div className="p-8 text-center">
             <p>No se encontraron productos</p>
+            {searchTerm || groupFilter ? (
+              <p className="text-sm text-muted-foreground mt-2">
+                Intenta ajustar los filtros de búsqueda
+              </p>
+            ) : null}
           </div>
         ) : (
           <>
@@ -565,10 +619,20 @@ export default function Inventory() {
               </TableHeader>
               <TableBody>
                 {products.map((product) => (
-                  <TableRow key={product.id}>
+                  <TableRow key={product.id} className="hover:bg-muted/50">
                     <TableCell className="font-medium">{product.nombre_producto}</TableCell>
-                    <TableCell>{product.grupo}</TableCell>
-                    <TableCell>{product.cantidad_inventario}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                        {product.grupo}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`font-medium ${
+                        product.cantidad_inventario > 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {product.cantidad_inventario}
+                      </span>
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button
@@ -604,7 +668,6 @@ export default function Inventory() {
                 </Button>
                 
                 <div className="flex gap-1">
-                  {/* Mostrar números de página */}
                   {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
                     let paginaNumero;
                     if (totalPaginas <= 5) {
@@ -695,8 +758,8 @@ export default function Inventory() {
                     <p className="font-medium">{selectedProduct.marca || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Tallas / Tamaño</p>
-                    <p className="font-medium">{selectedProduct.talla_tamano || "N/A"}</p>
+                    <p className="text-sm text-muted-foreground">Tamaño</p>
+                    <p className="font-medium">{selectedProduct.tamano || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Impuesto</p>
@@ -704,15 +767,15 @@ export default function Inventory() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Precio Unitario</p>
-                    <p className="font-medium">${selectedProduct.precio_unitario?.toFixed(2) || "0.00"}</p>
+                    <p className="font-medium">{formatCurrency(selectedProduct.precio_unitario)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Precio Venta</p>
-                    <p className="font-medium">${selectedProduct.precio_venta?.toFixed(2) || "N/A"}</p>
+                    <p className="font-medium">{formatCurrency(selectedProduct.precio_venta)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Paso</p>
-                    <p className="font-medium">{selectedProduct.paso || "N/A"}</p>
+                    <p className="text-sm text-muted-foreground">Lead Time (Días)</p>
+                    <p className="font-medium">{selectedProduct.paso}</p>
                   </div>
                 </div>
               </div>
@@ -725,10 +788,14 @@ export default function Inventory() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Cantidad Disponible</p>
-                  <p className="font-medium">{selectedProduct.cantidad_disponible}</p>
+                  <p className={`font-medium ${
+                    selectedProduct.cantidad_disponible > 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {selectedProduct.cantidad_disponible}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Ubicación</p>
+                  <p className="text-sm text-muted-foreground">Ubicación/Barcode</p>
                   <p className="font-medium">{selectedProduct.ubicacion || "N/A"}</p>
                 </div>
               </div>
@@ -744,7 +811,7 @@ export default function Inventory() {
                   Modificar
                 </Button>
                 <Button
-                  onClick={() => eliminarProducto(selectedProduct.ProductID)}
+                  onClick={() => eliminarProducto(selectedProduct.StockItemID)}
                   variant="destructive"
                   className="flex-1"
                 >
@@ -768,141 +835,166 @@ export default function Inventory() {
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="text-sm font-medium mb-2 block">Nombre del Producto</label>
+                <label className="text-sm font-medium mb-2 block">Nombre del Producto *</label>
                 <Input
-                  value={formData.nombre_producto}
-                  onChange={(e) => setFormData({...formData, nombre_producto: e.target.value})}
+                  value={formData.StockItemName}
+                  onChange={(e) => setFormData({...formData, StockItemName: e.target.value})}
                   required
+                  placeholder="Ingrese el nombre del producto"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Proveedor ID</label>
+                <label className="text-sm font-medium mb-2 block">ID del Proveedor *</label>
                 <Input
                   type="number"
-                  value={formData.proveedor_id}
-                  onChange={(e) => setFormData({...formData, proveedor_id: parseInt(e.target.value)})}
+                  value={formData.SupplierID}
+                  onChange={(e) => setFormData({...formData, SupplierID: parseInt(e.target.value) || 0})}
                   required
+                  placeholder="ID del proveedor"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Color</label>
-                <Input
-                  value={formData.color}
-                  onChange={(e) => setFormData({...formData, color: e.target.value})}
-                />
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium mb-2 block">Unidad de Empaquetamiento</label>
-                <Input
-                  value={formData.unidad_empaquetamiento}
-                  onChange={(e) => setFormData({...formData, unidad_empaquetamiento: e.target.value})}
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium mb-2 block">Empaquetamiento Externo</label>
-                <Input
-                  value={formData.empaquetamiento_externo}
-                  onChange={(e) => setFormData({...formData, empaquetamiento_externo: e.target.value})}
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="text-sm font-medium mb-2 block">Cantidad de Empaquetamiento</label>
+                <label className="text-sm font-medium mb-2 block">ID del Color</label>
                 <Input
                   type="number"
-                  value={formData.cantidad_empaquetamiento}
-                  onChange={(e) => setFormData({...formData, cantidad_empaquetamiento: parseInt(e.target.value)})}
+                  value={formData.ColorID || ''}
+                  onChange={(e) => setFormData({...formData, ColorID: e.target.value ? parseInt(e.target.value) : undefined})}
+                  placeholder="ID del color (opcional)"
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-2 block">ID Unidad Empaquetamiento *</label>
+                <Input
+                  type="number"
+                  value={formData.UnitPackageID}
+                  onChange={(e) => setFormData({...formData, UnitPackageID: parseInt(e.target.value) || 0})}
                   required
+                  placeholder="ID unidad empaquetamiento"
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-2 block">ID Empaquetamiento Externo *</label>
+                <Input
+                  type="number"
+                  value={formData.OuterPackageID}
+                  onChange={(e) => setFormData({...formData, OuterPackageID: parseInt(e.target.value) || 0})}
+                  required
+                  placeholder="ID empaquetamiento externo"
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-2 block">Cantidad por Empaque *</label>
+                <Input
+                  type="number"
+                  value={formData.QuantityPerOuter}
+                  onChange={(e) => setFormData({...formData, QuantityPerOuter: parseInt(e.target.value) || 0})}
+                  required
+                  placeholder="Cantidad por empaque externo"
                 />
               </div>
               
               <div>
                 <label className="text-sm font-medium mb-2 block">Marca</label>
                 <Input
-                  value={formData.marca}
-                  onChange={(e) => setFormData({...formData, marca: e.target.value})}
+                  value={formData.Brand}
+                  onChange={(e) => setFormData({...formData, Brand: e.target.value})}
+                  placeholder="Marca del producto"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Tamaño/Talla</label>
+                <label className="text-sm font-medium mb-2 block">Tamaño</label>
                 <Input
-                  value={formData.talla_tamano}
-                  onChange={(e) => setFormData({...formData, talla_tamano: e.target.value})}
+                  value={formData.Size}
+                  onChange={(e) => setFormData({...formData, Size: e.target.value})}
+                  placeholder="Tamaño o talla"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Impuesto (%)</label>
+                <label className="text-sm font-medium mb-2 block">Impuesto (%) *</label>
                 <Input
                   type="number"
                   step="0.01"
-                  value={formData.impuesto}
-                  onChange={(e) => setFormData({...formData, impuesto: parseFloat(e.target.value)})}
+                  value={formData.TaxRate}
+                  onChange={(e) => setFormData({...formData, TaxRate: parseFloat(e.target.value) || 0})}
                   required
+                  placeholder="Porcentaje de impuesto"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Precio Unitario</label>
+                <label className="text-sm font-medium mb-2 block">Precio Unitario *</label>
                 <Input
                   type="number"
                   step="0.01"
-                  value={formData.precio_unitario}
-                  onChange={(e) => setFormData({...formData, precio_unitario: parseFloat(e.target.value)})}
+                  value={formData.UnitPrice}
+                  onChange={(e) => setFormData({...formData, UnitPrice: parseFloat(e.target.value) || 0})}
                   required
+                  placeholder="Precio unitario"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Precio de Venta</label>
+                <label className="text-sm font-medium mb-2 block">Precio Venta Recomendado</label>
                 <Input
                   type="number"
                   step="0.01"
-                  value={formData.precio_venta}
-                  onChange={(e) => setFormData({...formData, precio_venta: parseFloat(e.target.value)})}
+                  value={formData.RecommendedRetailPrice || ''}
+                  onChange={(e) => setFormData({...formData, RecommendedRetailPrice: e.target.value ? parseFloat(e.target.value) : undefined})}
+                  placeholder="Precio de venta recomendado"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Paso</label>
+                <label className="text-sm font-medium mb-2 block">Lead Time (Días) *</label>
                 <Input
-                  value={formData.paso}
-                  onChange={(e) => setFormData({...formData, paso: e.target.value})}
+                  type="number"
+                  value={formData.LeadTimeDays}
+                  onChange={(e) => setFormData({...formData, LeadTimeDays: parseInt(e.target.value) || 0})}
+                  required
+                  placeholder="Días de lead time"
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-2 block">Código de Barras</label>
+                <Input
+                  value={formData.Barcode}
+                  onChange={(e) => setFormData({...formData, Barcode: e.target.value})}
+                  placeholder="Código de barras"
                 />
               </div>
               
               <div className="col-span-2">
-                <label className="text-sm font-medium mb-2 block">Palabras Clave</label>
+                <label className="text-sm font-medium mb-2 block">Comentarios de Marketing</label>
                 <Input
-                  value={formData.palabras_clave}
-                  onChange={(e) => setFormData({...formData, palabras_clave: e.target.value})}
+                  value={formData.MarketingComments}
+                  onChange={(e) => setFormData({...formData, MarketingComments: e.target.value})}
+                  placeholder="Comentarios para marketing"
                 />
               </div>
               
-              <div>
-                <label className="text-sm font-medium mb-2 block">Cantidad Disponible</label>
+              <div className="col-span-2">
+                <label className="text-sm font-medium mb-2 block">Comentarios Internos</label>
                 <Input
-                  type="number"
-                  value={formData.cantidad_disponible}
-                  onChange={(e) => setFormData({...formData, cantidad_disponible: parseInt(e.target.value)})}
-                  required
+                  value={formData.InternalComments}
+                  onChange={(e) => setFormData({...formData, InternalComments: e.target.value})}
+                  placeholder="Comentarios internos"
                 />
               </div>
-              
-              <div>
-                <label className="text-sm font-medium mb-2 block">Ubicación</label>
-                <Input
-                  value={formData.ubicacion}
-                  onChange={(e) => setFormData({...formData, ubicacion: e.target.value})}
-                />
-              </div>
+            </div>
+            
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-sm text-blue-700">
+                💡 <strong>Nota:</strong> Los cambios en productos se replicarán automáticamente 
+                a todas las sucursales (San José y Limón) mediante triggers de SQL Server.
+              </p>
             </div>
             
             <DialogFooter className="mt-6">
@@ -915,7 +1007,14 @@ export default function Inventory() {
                 Cancelar
               </Button>
               <Button type="submit" disabled={formLoading}>
-                {formLoading ? 'Guardando...' : (editingProduct ? 'Modificar' : 'Crear')}
+                {formLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    {editingProduct ? 'Modificando...' : 'Creando...'}
+                  </>
+                ) : (
+                  editingProduct ? 'Modificar Producto' : 'Crear Producto'
+                )}
               </Button>
             </DialogFooter>
           </form>

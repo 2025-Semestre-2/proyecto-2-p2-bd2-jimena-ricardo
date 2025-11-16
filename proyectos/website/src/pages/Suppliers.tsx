@@ -45,6 +45,16 @@ interface Filtro {
   etiqueta: string;
 }
 
+// Interface para la respuesta de la API
+interface ApiResponse {
+  proveedores: Supplier[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+}
+
 export default function Suppliers() {
   const location = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,12 +81,10 @@ export default function Suppliers() {
 
   // Efecto para cargar datos iniciales y manejar navegación
   useEffect(() => {
-    // Verificar si hay parámetros de navegación
     const state = location.state as { initialSearch?: string; autoSearch?: boolean };
     
     if (state?.initialSearch) {
       setSearchTerm(state.initialSearch);
-      // Si autoSearch es true, realizar búsqueda automática
       if (state.autoSearch) {
         setTimeout(() => {
           fetchSuppliers(state.initialSearch, categoryFilter, deliveryMethodFilter);
@@ -108,7 +116,6 @@ export default function Suppliers() {
       
       const data: Filtro[] = await response.json();
       
-      // Separar los filtros por tipo
       setCategorias(data.filter(filtro => filtro.tipo_filtro === 'categorias'));
       setMetodosEntrega(data.filter(filtro => filtro.tipo_filtro === 'metodos_entrega'));
       
@@ -125,11 +132,11 @@ export default function Suppliers() {
       setError(null);
       
       const params = new URLSearchParams();
-      params.append('pagina', paginaActual.toString());
-      params.append('tamanoPagina', tamanoPagina.toString());
-      if (nombre) params.append('nombre', nombre);
-      if (categoria && categoria !== 'all') params.append('categoria', categoria);
-      if (metodoEntrega && metodoEntrega !== 'all') params.append('metodoEntrega', metodoEntrega);
+      params.append('page', paginaActual.toString());
+      params.append('pageSize', tamanoPagina.toString());
+      if (nombre) params.append('filtroNombre', nombre);
+      if (categoria && categoria !== 'all') params.append('filtroCategoria', categoria);
+      if (metodoEntrega && metodoEntrega !== 'all') params.append('filtroMetodoEntrega', metodoEntrega);
       
       const url = `http://localhost:3000/api/proveedores?${params.toString()}`;
       
@@ -139,11 +146,13 @@ export default function Suppliers() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setSuppliers(data);
+      const data: ApiResponse = await response.json();
+      setSuppliers(data.proveedores || []);
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching suppliers:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los proveedores');
+      setSuppliers([]);
     } finally {
       setLoading(false);
     }
@@ -153,11 +162,11 @@ export default function Suppliers() {
     try {
       setCargandoTotal(true);
       const params = new URLSearchParams();
-      if (searchTerm) params.append('nombre', searchTerm);
-      if (categoryFilter && categoryFilter !== 'all') params.append('categoria', categoryFilter);
-      if (deliveryMethodFilter && deliveryMethodFilter !== 'all') params.append('metodoEntrega', deliveryMethodFilter);
+      if (searchTerm) params.append('filtroNombre', searchTerm);
+      if (categoryFilter && categoryFilter !== 'all') params.append('filtroCategoria', categoryFilter);
+      if (deliveryMethodFilter && deliveryMethodFilter !== 'all') params.append('filtroMetodoEntrega', deliveryMethodFilter);
       
-      const url = `http://localhost:3000/api/proveedores/total?${params.toString()}`;
+      const url = `http://localhost:3000/api/proveedores?${params.toString()}&page=1&pageSize=1`;
       
       const response = await fetch(url);
       
@@ -165,8 +174,8 @@ export default function Suppliers() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setTotalRegistros(data.Total || 0);
+      const data: ApiResponse = await response.json();
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching total suppliers:', err);
       setTotalRegistros(0);
@@ -199,7 +208,7 @@ export default function Suppliers() {
   };
 
   const handleSearch = () => {
-    setPaginaActual(1); // Resetear a primera página al buscar
+    setPaginaActual(1);
     fetchSuppliers(searchTerm, categoryFilter, deliveryMethodFilter);
   };
 
@@ -362,11 +371,17 @@ export default function Suppliers() {
       <Card className="overflow-hidden shadow-lg animate-fade-in" style={{ animationDelay: '200ms' }}>
         {loading ? (
           <div className="p-8 text-center">
-            <p>Cargando proveedores...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2">Cargando proveedores...</p>
           </div>
         ) : suppliers.length === 0 ? (
           <div className="p-8 text-center">
             <p>No se encontraron proveedores</p>
+            {(searchTerm || categoryFilter !== 'all' || deliveryMethodFilter !== 'all') && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Intenta ajustar los filtros de búsqueda
+              </p>
+            )}
           </div>
         ) : (
           <>
@@ -381,9 +396,13 @@ export default function Suppliers() {
               </TableHeader>
               <TableBody>
                 {suppliers.map((supplier) => (
-                  <TableRow key={supplier.id}>
+                  <TableRow key={supplier.id} className="hover:bg-muted/50">
                     <TableCell className="font-medium">{supplier.nombre}</TableCell>
-                    <TableCell>{supplier.categoria}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800">
+                        {supplier.categoria}
+                      </span>
+                    </TableCell>
                     <TableCell>{supplier.metodo_entrega}</TableCell>
                     <TableCell>
                       <Button
@@ -418,7 +437,6 @@ export default function Suppliers() {
                 </Button>
                 
                 <div className="flex gap-1">
-                  {/* Mostrar números de página */}
                   {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
                     let paginaNumero;
                     if (totalPaginas <= 5) {
@@ -475,7 +493,7 @@ export default function Suppliers() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Nombre</p>
-                  <p className="font-medium">{selectedSupplier.nombre_proveedor}</p>
+                  <p className="font-medium text-lg">{selectedSupplier.nombre_proveedor}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Categoría</p>
@@ -578,11 +596,11 @@ export default function Suppliers() {
                   <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-muted-foreground">Latitud:</span>
-                      <span className="ml-2 font-mono">{selectedSupplier.latitud.toFixed(6)}</span>
+                      <span className="ml-2 font-mono">{selectedSupplier.latitud?.toFixed(6)}</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Longitud:</span>
-                      <span className="ml-2 font-mono">{selectedSupplier.longitud.toFixed(6)}</span>
+                      <span className="ml-2 font-mono">{selectedSupplier.longitud?.toFixed(6)}</span>
                     </div>
                   </div>
                 </div>

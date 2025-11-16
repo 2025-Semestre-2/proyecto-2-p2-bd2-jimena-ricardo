@@ -1,7 +1,7 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Outlet, useNavigate } from "react-router-dom";
-import { Building2, User, LogOut } from "lucide-react";
+import { Building2, User, LogOut, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 
 export default function Layout() {
   const navigate = useNavigate();
@@ -21,6 +22,23 @@ export default function Layout() {
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     navigate('/login');
+  };
+
+  const getBranchName = (branch: string) => {
+    const branches: { [key: string]: string } = {
+      'SJ': 'San José',
+      'LM': 'Limón', 
+      'CORP': 'Corporativo'
+    };
+    return branches[branch] || branch;
+  };
+
+  const getRoleDisplayName = (rol: string) => {
+    const roles: { [key: string]: string } = {
+      'admin': 'Administrador',
+      'corporativo': 'Corporativo'
+    };
+    return roles[rol] || rol;
   };
 
   return (
@@ -39,10 +57,15 @@ export default function Layout() {
             {/* Información del usuario y logout */}
             {user && (
               <div className="flex items-center gap-4">
-                <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
-                  <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
-                    {user.rol}
-                  </span>
+                {/* Información de sucursal y rol */}
+                <div className="hidden md:flex items-center gap-3 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <MapPin className="h-3 w-3" />
+                    <span>{getBranchName(user.branch)}</span>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    {getRoleDisplayName(user.rol)}
+                  </Badge>
                 </div>
                 
                 <DropdownMenu>
@@ -58,9 +81,16 @@ export default function Layout() {
                         <p className="text-xs leading-none text-muted-foreground">
                           {user.email}
                         </p>
-                        <p className="text-xs leading-none text-muted-foreground mt-1">
-                          Rol: {user.rol}
-                        </p>
+                        <div className="flex flex-col space-y-1 mt-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Sucursal:</span>
+                            <span className="font-medium">{getBranchName(user.branch)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Rol:</span>
+                            <span className="font-medium">{getRoleDisplayName(user.rol)}</span>
+                          </div>
+                        </div>
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />

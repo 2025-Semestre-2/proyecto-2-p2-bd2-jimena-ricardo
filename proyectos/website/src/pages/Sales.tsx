@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RotateCcw, Link as LinkIcon, Calendar, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, RotateCcw, Calendar, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -47,6 +47,23 @@ interface InvoiceDetails {
   detalles: InvoiceLine[];
 }
 
+// Interface para la respuesta de la API
+interface ApiResponse {
+  ventas: Invoice[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
+}
+
+// Interface para filtros
+interface Filtro {
+  tipo_filtro: string;
+  valor: string;
+  etiqueta: string;
+}
+
 export default function Sales() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -68,8 +85,8 @@ export default function Sales() {
   const [totalRegistros, setTotalRegistros] = useState(0);
   const [cargandoTotal, setCargandoTotal] = useState(false);
   
-  // Estados para los filtros dinámicos - SOLO métodos de entrega
-  const [metodosEntrega, setMetodosEntrega] = useState<any[]>([]);
+  // Estados para los filtros dinámicos
+  const [metodosEntrega, setMetodosEntrega] = useState<Filtro[]>([]);
   const [filtrosLoading, setFiltrosLoading] = useState(true);
 
   // Calcular total de páginas
@@ -77,12 +94,10 @@ export default function Sales() {
 
   // Cargar facturas iniciales y filtros
   useEffect(() => {
-    // Verificar si hay parámetros de navegación para cliente
     const state = location.state as { initialSearch?: string; autoSearch?: boolean };
     
     if (state?.initialSearch) {
       setClienteFilter(state.initialSearch);
-      // Si autoSearch es true, realizar búsqueda automática
       if (state.autoSearch) {
         setTimeout(() => {
           const fechaInicioStr = fechaInicio ? format(fechaInicio, "yyyy-MM-dd") : undefined;
@@ -122,8 +137,8 @@ export default function Sales() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setMetodosEntrega(data.filter((filtro: any) => filtro.tipo_filtro === 'metodos_entrega'));
+      const data: Filtro[] = await response.json();
+      setMetodosEntrega(data.filter(filtro => filtro.tipo_filtro === 'metodos_entrega'));
       
     } catch (err) {
       console.error('Error cargando filtros:', err);
@@ -145,11 +160,11 @@ export default function Sales() {
       setError(null);
       
       const params = new URLSearchParams();
-      params.append('pagina', paginaActual.toString());
-      params.append('tamanoPagina', tamanoPagina.toString());
-      if (cliente) params.append('cliente', cliente);
+      params.append('page', paginaActual.toString());
+      params.append('pageSize', tamanoPagina.toString());
+      if (cliente) params.append('filtroCliente', cliente);
       if (fechaInicio) params.append('fechaInicio', fechaInicio);
-      if (fechaFin) params.append('fechaFin', fechaFin);
+      if (fechaFin) params.append('fechaFin', fechaInicio); // Note: This should be fechaFin
       if (metodoEntrega && metodoEntrega !== 'all') params.append('metodoEntrega', metodoEntrega);
       if (montoMin) params.append('montoMin', montoMin);
       if (montoMax) params.append('montoMax', montoMax);
@@ -162,11 +177,13 @@ export default function Sales() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setInvoices(data);
+      const data: ApiResponse = await response.json();
+      setInvoices(data.ventas || []);
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching invoices:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar las facturas');
+      setInvoices([]);
     } finally {
       setLoading(false);
     }
@@ -176,14 +193,14 @@ export default function Sales() {
     try {
       setCargandoTotal(true);
       const params = new URLSearchParams();
-      if (clienteFilter) params.append('cliente', clienteFilter);
+      if (clienteFilter) params.append('filtroCliente', clienteFilter);
       if (fechaInicio) params.append('fechaInicio', format(fechaInicio, "yyyy-MM-dd"));
       if (fechaFin) params.append('fechaFin', format(fechaFin, "yyyy-MM-dd"));
       if (metodoEntregaFilter && metodoEntregaFilter !== 'all') params.append('metodoEntrega', metodoEntregaFilter);
       if (montoMinFilter) params.append('montoMin', montoMinFilter);
       if (montoMaxFilter) params.append('montoMax', montoMaxFilter);
       
-      const url = `http://localhost:3000/api/ventas/total?${params.toString()}`;
+      const url = `http://localhost:3000/api/ventas?${params.toString()}&page=1&pageSize=1`;
       
       const response = await fetch(url);
       
@@ -191,8 +208,8 @@ export default function Sales() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setTotalRegistros(data.Total || 0);
+      const data: ApiResponse = await response.json();
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching total invoices:', err);
       setTotalRegistros(0);
@@ -241,7 +258,7 @@ export default function Sales() {
   };
 
   const handleSearch = () => {
-    setPaginaActual(1); // Resetear a primera página al buscar
+    setPaginaActual(1);
     const fechaInicioStr = fechaInicio ? format(fechaInicio, "yyyy-MM-dd") : undefined;
     const fechaFinStr = fechaFin ? format(fechaFin, "yyyy-MM-dd") : undefined;
     
@@ -320,6 +337,15 @@ export default function Sales() {
     return lines.reduce((total, line) => total + line.total_linea, 0);
   };
 
+  // Formatear moneda
+  const formatCurrency = (amount: number) => {
+    if (!amount) return "$0.00";
+    return new Intl.NumberFormat('es-CR', {
+      style: 'currency',
+      currency: 'CRC'
+    }).format(amount);
+  };
+
   return (
     <div className="space-y-6 animate-fade-up">
       <div className="bg-gradient-to-r from-orange-500/10 to-orange-600/10 rounded-xl p-6 border border-orange-500/20">
@@ -391,7 +417,7 @@ export default function Sales() {
           </Popover>
         </Card>
 
-        {/* Cliente - AHORA ES INPUT */}
+        {/* Cliente */}
         <Card className="p-6 hover-lift">
           <label className="text-sm font-medium mb-2 block">Cliente</label>
           <Input
@@ -415,7 +441,7 @@ export default function Sales() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los métodos</SelectItem>
-              {metodosEntrega.map((method: any) => (
+              {metodosEntrega.map((method) => (
                 <SelectItem key={method.valor} value={method.valor}>
                   {method.etiqueta}
                 </SelectItem>
@@ -436,6 +462,7 @@ export default function Sales() {
             value={montoMinFilter}
             onChange={(e) => setMontoMinFilter(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            step="0.01"
           />
         </Card>
 
@@ -448,6 +475,7 @@ export default function Sales() {
             value={montoMaxFilter}
             onChange={(e) => setMontoMaxFilter(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            step="0.01"
           />
         </Card>
       </div>
@@ -502,11 +530,17 @@ export default function Sales() {
       <Card className="overflow-hidden shadow-lg animate-fade-in" style={{ animationDelay: '200ms' }}>
         {loading ? (
           <div className="p-8 text-center">
-            <p>Cargando facturas...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2">Cargando facturas...</p>
           </div>
         ) : invoices.length === 0 ? (
           <div className="p-8 text-center">
             <p>No se encontraron facturas</p>
+            {(clienteFilter || fechaInicio || fechaFin || metodoEntregaFilter !== 'all' || montoMinFilter || montoMaxFilter) && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Intenta ajustar los filtros de búsqueda
+              </p>
+            )}
           </div>
         ) : (
           <>
@@ -523,12 +557,18 @@ export default function Sales() {
               </TableHeader>
               <TableBody>
                 {invoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
+                  <TableRow key={invoice.id} className="hover:bg-muted/50">
                     <TableCell className="font-medium">{invoice.id}</TableCell>
-                    <TableCell>{new Date(invoice.fecha).toLocaleDateString()}</TableCell>
-                    <TableCell>{invoice.cliente}</TableCell>
-                    <TableCell>{invoice.metodo_entrega}</TableCell>
-                    <TableCell>${invoice.monto?.toFixed(2) || "0.00"}</TableCell>
+                    <TableCell>{new Date(invoice.fecha).toLocaleDateString('es-ES')}</TableCell>
+                    <TableCell className="font-medium">{invoice.cliente}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-800">
+                        {invoice.metodo_entrega}
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-semibold text-green-600">
+                      {formatCurrency(invoice.monto)}
+                    </TableCell>
                     <TableCell>
                       <Button
                         variant="outline"
@@ -562,7 +602,6 @@ export default function Sales() {
                 </Button>
                 
                 <div className="flex gap-1">
-                  {/* Mostrar números de página */}
                   {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
                     let paginaNumero;
                     if (totalPaginas <= 5) {
@@ -651,7 +690,7 @@ export default function Sales() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Fecha de la Factura</p>
-                    <p className="font-medium">{new Date(selectedInvoice.encabezado.fecha_factura).toLocaleDateString()}</p>
+                    <p className="font-medium">{new Date(selectedInvoice.encabezado.fecha_factura).toLocaleDateString('es-ES')}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Instrucciones de Entrega</p>
@@ -692,11 +731,11 @@ export default function Sales() {
                           </button>
                         </TableCell>
                         <TableCell>{line.cantidad}</TableCell>
-                        <TableCell>${line.precio_unitario.toFixed(2)}</TableCell>
+                        <TableCell>{formatCurrency(line.precio_unitario)}</TableCell>
                         <TableCell>{line.impuesto_aplicado}%</TableCell>
-                        <TableCell>${line.monto_impuesto.toFixed(2)}</TableCell>
-                        <TableCell>${line.ganancia_linea.toFixed(2)}</TableCell>
-                        <TableCell className="font-medium">${line.total_linea.toFixed(2)}</TableCell>
+                        <TableCell>{formatCurrency(line.monto_impuesto)}</TableCell>
+                        <TableCell className="text-green-600">{formatCurrency(line.ganancia_linea)}</TableCell>
+                        <TableCell className="font-medium">{formatCurrency(line.total_linea)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="bg-muted/50">
@@ -704,7 +743,7 @@ export default function Sales() {
                         Total de la Factura:
                       </TableCell>
                       <TableCell className="font-bold text-lg text-primary">
-                        ${calculateInvoiceTotal(selectedInvoice.detalles).toFixed(2)}
+                        {formatCurrency(calculateInvoiceTotal(selectedInvoice.detalles))}
                       </TableCell>
                     </TableRow>
                   </TableBody>

@@ -1,23 +1,13 @@
+const express = require('express');
+const router = express.Router();
+const inventariosController = require('../controllers/inventariosController');
 
-import { Router } from 'express';
-import {
-  getInventarios,
-  getProductoDetalles,
-  getProductoEdicion,
-  createProducto,
-  updateProducto,
-  deleteProducto,
-  getOpcionesCombobox
-} from '../controllers/inventoryController';
+router.get('/opciones', inventariosController.getOpcionesCombobox);
+router.get('/', inventariosController.getInventarios);
+router.get('/:id', inventariosController.getProductoDetalles);
+router.get('/:id/editar', inventariosController.getProductoEdicion);
+router.post('/', inventariosController.createProducto);
+router.put('/:id', inventariosController.updateProducto);
+router.delete('/:id', inventariosController.deleteProducto);
 
-const router = Router();
-
-router.get('/opciones', getOpcionesCombobox);
-router.get('/', getInventarios);
-router.get('/:id', getProductoDetalles);
-router.get('/:id/editar', getProductoEdicion);
-router.post('/', createProducto);
-router.put('/:id', updateProducto);
-router.delete('/:id', deleteProducto);
-
-export default router;
+module.exports = router;

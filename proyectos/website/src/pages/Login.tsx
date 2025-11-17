@@ -34,7 +34,7 @@ export default function Login() {
   setError("");
 
   try {
-    console.log('🔄 [FRONTEND] Enviando credenciales:', { username, password });
+    console.log('[FRONTEND] Enviando credenciales:', { username, password });
     
     const response = await fetch('http://localhost:3000/api/auth/login', {
       method: 'POST',
@@ -44,14 +44,14 @@ export default function Login() {
       body: JSON.stringify({ username, password }),
     });
 
-    console.log('📡 [FRONTEND] Respuesta del servidor:', {
+    console.log('[FRONTEND] Respuesta del servidor:', {
       status: response.status,
       statusText: response.statusText,
       ok: response.ok
     });
 
     const data = await response.json();
-    console.log('📊 [FRONTEND] Datos de respuesta:', data);
+    console.log('[FRONTEND] Datos de respuesta:', data);
 
     if (response.ok && data.success) {
       localStorage.setItem('user', JSON.stringify(data.user));
@@ -65,7 +65,7 @@ export default function Login() {
       setError(data.error || data.message || "Credenciales inválidas");
     }
   } catch (err) {
-    console.error('💥 [FRONTEND] Error completo:', err);
+    console.error('[FRONTEND] Error completo:', err);
     setError("Error de conexión. Verifique que el servidor esté ejecutándose.");
   } finally {
     setLoading(false);
@@ -140,13 +140,6 @@ export default function Login() {
                   )}
                 </Button>
               </div>
-            </div>
-
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <p><strong>Usuarios de prueba:</strong></p>
-              <p>• admin.sj / password123 (Admin San José)</p>
-              <p>• admin.lm / password123 (Admin Limón)</p>
-              <p>• corporativo / password123 (Corporativo)</p>
             </div>
 
             <Button 

@@ -103,6 +103,7 @@ EXEC sp_CreateUser
     @hiredate = '2024-01-15',
     @active = 1;
 
+
 CREATE OR ALTER PROCEDURE sp_ValidateUserCredentials
     @username NVARCHAR(50),
     @password NVARCHAR(255)
@@ -118,7 +119,8 @@ BEGIN
         email,
         rol,
         active,
-        hiredate
+        hiredate,
+        branch
     FROM [User]
     WHERE username = @username 
       AND password = @hashedPassword

@@ -259,6 +259,8 @@ export default function Inventory() {
       
       const url = `http://localhost:3000/api/inventarios?${params.toString()}`;
       
+      console.log('Fetching products from:', url); // Debug
+      
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -267,6 +269,8 @@ export default function Inventory() {
       }
       
       const data: ApiResponse = await response.json();
+      console.log('Products data received:', data); // Debug
+      
       setProducts(data.inventarios || []);
       setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
@@ -284,10 +288,12 @@ export default function Inventory() {
     try {
       setCargandoTotal(true);
       const params = new URLSearchParams();
+      params.append('page', '1');
+      params.append('pageSize', '1');
       if (searchTerm) params.append('filtroNombre', searchTerm);
       if (groupFilter && groupFilter !== 'all') params.append('filtroGrupo', groupFilter);
       
-      const url = `http://localhost:3000/api/inventarios?${params.toString()}&page=1&pageSize=1`;
+      const url = `http://localhost:3000/api/inventarios?${params.toString()}`;
       
       const response = await fetch(url);
       
@@ -623,10 +629,9 @@ export default function Inventory() {
     }
   };
 
+  // Efecto para cargar datos cuando cambia la página o tamaño de página
   useEffect(() => {
-    if (!loading) {
-      fetchProducts(searchTerm, groupFilter);
-    }
+    fetchProducts(searchTerm, groupFilter);
   }, [paginaActual, tamanoPagina]);
 
   const formatCurrency = (amount: number) => {

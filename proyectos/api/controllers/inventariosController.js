@@ -42,19 +42,35 @@ const inventariosController = {
         request.input('FiltroGrupo', sql.NVarChar, filtroGrupo);
       }
       
+      // Ejecutar el stored procedure para obtener los productos
       const result = await request.execute('sp_GetInventarios');
+      
+      // Obtener el total de registros
+      const totalRequest = pool.request();
+      if (filtroNombre) {
+        totalRequest.input('FiltroNombre', sql.NVarChar, filtroNombre);
+      }
+      if (filtroGrupo && filtroGrupo !== 'all') {
+        totalRequest.input('FiltroGrupo', sql.NVarChar, filtroGrupo);
+      }
+      
+      const totalResult = await totalRequest.execute('sp_GetTotalInventarios');
+      const total = totalResult.recordset[0]?.Total || 0;
       
       res.json({
         inventarios: result.recordset || [],
         pagination: {
           page: parseInt(page),
           pageSize: parseInt(pageSize),
-          total: result.recordset[0]?.TotalCount || 0
+          total: total
         }
       });
     } catch (error) {
       console.error('Error en getInventarios:', error);
-      res.status(500).json({ error: 'Error interno del servidor' });
+      res.status(500).json({ 
+        error: 'Error interno del servidor',
+        details: error.message 
+      });
     }
   },
 

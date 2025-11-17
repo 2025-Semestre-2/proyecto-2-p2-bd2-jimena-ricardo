@@ -5,11 +5,10 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RotateCcw, Link as LinkIcon, ExternalLink, Plus, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, RotateCcw, ExternalLink, Plus, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Swing } from 'swing';
+import Swal from 'sweetalert2';
 
-// Interfaces para tipado
 interface Product {
   id: number;
   nombre_producto: string;
@@ -18,49 +17,64 @@ interface Product {
 }
 
 interface ProductDetails {
-  ProductID: number;
+  StockItemID: number;
   nombre_producto: string;
   nombre_proveedor: string;
-  proveedor_id?: number;
-  color: string;
-  unidad_empaquetamiento: string;
-  empaquetamiento_externo: string;
-  cantidad_empaquetamiento: number;
-  marca: string;
-  talla_tamano: string;
-  impuesto: number;
-  precio_unitario: number;
-  precio_venta: number;
-  paso: string;
-  palabras_clave: string;
-  cantidad_disponible: number;
-  ubicacion: string;
-}
-
-// Interface para los filtros dinámicos
-interface Filtro {
-  tipo_filtro: string;
-  valor: string;
-  etiqueta: string;
-}
-
-// Interface para el formulario de producto
-interface ProductFormData {
-  nombre_producto: string;
   proveedor_id: number;
   color: string;
   unidad_empaquetamiento: string;
   empaquetamiento_externo: string;
   cantidad_empaquetamiento: number;
   marca: string;
-  talla_tamano: string;
+  tamano: string;
   impuesto: number;
   precio_unitario: number;
   precio_venta: number;
-  paso: string;
+  paso: number;
   palabras_clave: string;
   cantidad_disponible: number;
   ubicacion: string;
+}
+
+interface Filtro {
+  tipo_filtro: string;
+  valor: string;
+  etiqueta: string;
+}
+
+interface OpcionCombobox {
+  id: number;
+  nombre: string;
+}
+
+interface ProductFormData {
+  StockItemName: string;
+  SupplierName: string;
+  ColorName: string;
+  UnitPackageName: string;
+  OuterPackageName: string;
+  QuantityPerOuter: number;
+  Brand: string;
+  Size: string;
+  TaxRate: number;
+  UnitPrice: number;
+  RecommendedRetailPrice?: number;
+  LeadTimeDays: number;
+  Barcode: string;
+  IsChillerStock: boolean;
+  TypicalWeightPerUnit?: number;
+  MarketingComments: string;
+  InternalComments: string;
+  StockGroupNames: string;
+}
+
+interface ApiResponse {
+  inventarios: Product[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
 }
 
 export default function Inventory() {
@@ -73,49 +87,103 @@ export default function Inventory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Estados para la paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const [tamanoPagina, setTamanoPagina] = useState(50);
   const [totalRegistros, setTotalRegistros] = useState(0);
   const [cargandoTotal, setCargandoTotal] = useState(false);
   
-  // Estados para CRUD
   const [showForm, setShowForm] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<ProductDetails | null>(null);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
   const [formData, setFormData] = useState<ProductFormData>({
-    nombre_producto: '',
-    proveedor_id: 0,
-    color: '',
-    unidad_empaquetamiento: '',
-    empaquetamiento_externo: '',
-    cantidad_empaquetamiento: 0,
-    marca: '',
-    talla_tamano: '',
-    impuesto: 0,
-    precio_unitario: 0,
-    precio_venta: 0,
-    paso: '',
-    palabras_clave: '',
-    cantidad_disponible: 0,
-    ubicacion: ''
+    StockItemName: '',
+    SupplierName: '',
+    ColorName: '',
+    UnitPackageName: '',
+    OuterPackageName: '',
+    QuantityPerOuter: 0,
+    Brand: '',
+    Size: '',
+    TaxRate: 0,
+    UnitPrice: 0,
+    RecommendedRetailPrice: 0,
+    LeadTimeDays: 0,
+    Barcode: '',
+    IsChillerStock: false,
+    TypicalWeightPerUnit: 1.0,
+    MarketingComments: '',
+    InternalComments: '',
+    StockGroupNames: ''
   });
   const [formLoading, setFormLoading] = useState(false);
   
-  // Estados para los filtros dinámicos - SOLO GRUPOS
+  const [proveedores, setProveedores] = useState<OpcionCombobox[]>([]);
+  const [colores, setColores] = useState<OpcionCombobox[]>([]);
+  const [tiposPaquete, setTiposPaquete] = useState<OpcionCombobox[]>([]);
+  const [gruposStock, setGruposStock] = useState<OpcionCombobox[]>([]);
+  const [opcionesCargando, setOpcionesCargando] = useState(false);
+
   const [grupos, setGrupos] = useState<Filtro[]>([]);
   const [filtrosLoading, setFiltrosLoading] = useState(true);
 
-  // Calcular total de páginas
   const totalPaginas = Math.ceil(totalRegistros / tamanoPagina);
 
-  // Cargar productos iniciales y filtros
+  const showSuccessAlert = (title: string, message: string) => {
+    Swal.fire({
+      title,
+      text: message,
+      icon: 'success',
+      confirmButtonText: 'Aceptar',
+      confirmButtonColor: '#16a34a',
+      timer: 3000,
+      timerProgressBar: true
+    });
+  };
+
+  const showErrorAlert = (title: string, message: string) => {
+    Swal.fire({
+      title,
+      text: message,
+      icon: 'error',
+      confirmButtonText: 'Entendido',
+      confirmButtonColor: '#dc2626'
+    });
+  };
+
+  const showConfirmAlert = (title: string, message: string): Promise<boolean> => {
+    return Swal.fire({
+      title,
+      text: message,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, continuar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#16a34a',
+      cancelButtonColor: '#6b7280',
+      reverseButtons: true
+    }).then((result) => {
+      return result.isConfirmed;
+    });
+  };
+
+  const showLoadingAlert = (title: string) => {
+    Swal.fire({
+      title,
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
+  };
+
+  const closeAlert = () => {
+    Swal.close();
+  };
+
   useEffect(() => {
-    // Verificar si hay parámetros de navegación para producto
     const state = location.state as { initialSearch?: string; autoSearch?: boolean };
     
     if (state?.initialSearch) {
       setSearchTerm(state.initialSearch);
-      // Si autoSearch es true, realizar búsqueda automática
       if (state.autoSearch) {
         setTimeout(() => {
           fetchProducts(state.initialSearch, groupFilter);
@@ -126,16 +194,38 @@ export default function Inventory() {
     }
     
     fetchFiltros();
+    fetchOpcionesCombobox();
   }, [location.state]);
 
-  // Efecto para cargar el total cuando cambian los filtros
   useEffect(() => {
     if (!loading) {
       fetchTotalInventarios();
     }
   }, [searchTerm, groupFilter]);
 
-  // Función para cargar los filtros dinámicos
+  const fetchOpcionesCombobox = async () => {
+    try {
+      setOpcionesCargando(true);
+      const response = await fetch('http://localhost:3000/api/inventarios/opciones');
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setProveedores(data.proveedores || []);
+      setColores(data.colores || []);
+      setTiposPaquete(data.tiposPaquete || []);
+      setGruposStock(data.gruposStock || []);
+      
+    } catch (err) {
+      console.error('Error cargando opciones:', err);
+      showErrorAlert('Error', 'No se pudieron cargar las opciones del formulario');
+    } finally {
+      setOpcionesCargando(false);
+    }
+  };
+
   const fetchFiltros = async () => {
     try {
       setFiltrosLoading(true);
@@ -146,12 +236,11 @@ export default function Inventory() {
       }
       
       const data: Filtro[] = await response.json();
-      
-      // SOLO cargar grupos (quitamos marcas y colores)
       setGrupos(data.filter(filtro => filtro.tipo_filtro === 'grupos'));
       
     } catch (err) {
       console.error('Error cargando filtros:', err);
+      showErrorAlert('Error', 'No se pudieron cargar los filtros');
     } finally {
       setFiltrosLoading(false);
     }
@@ -163,24 +252,29 @@ export default function Inventory() {
       setError(null);
       
       const params = new URLSearchParams();
-      params.append('pagina', paginaActual.toString());
-      params.append('tamanoPagina', tamanoPagina.toString());
-      if (nombre) params.append('nombre', nombre);
-      if (grupo && grupo !== 'all') params.append('grupo', grupo);
+      params.append('page', paginaActual.toString());
+      params.append('pageSize', tamanoPagina.toString());
+      if (nombre) params.append('filtroNombre', nombre);
+      if (grupo && grupo !== 'all') params.append('filtroGrupo', grupo);
       
       const url = `http://localhost:3000/api/inventarios?${params.toString()}`;
       
       const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setProducts(data);
+      const data: ApiResponse = await response.json();
+      setProducts(data.inventarios || []);
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching products:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar los productos');
+      const errorMessage = err instanceof Error ? err.message : 'Error al cargar los productos';
+      setError(errorMessage);
+      showErrorAlert('Error', errorMessage);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
@@ -190,10 +284,10 @@ export default function Inventory() {
     try {
       setCargandoTotal(true);
       const params = new URLSearchParams();
-      if (searchTerm) params.append('nombre', searchTerm);
-      if (groupFilter && groupFilter !== 'all') params.append('grupo', groupFilter);
+      if (searchTerm) params.append('filtroNombre', searchTerm);
+      if (groupFilter && groupFilter !== 'all') params.append('filtroGrupo', groupFilter);
       
-      const url = `http://localhost:3000/api/inventarios/total?${params.toString()}`;
+      const url = `http://localhost:3000/api/inventarios?${params.toString()}&page=1&pageSize=1`;
       
       const response = await fetch(url);
       
@@ -201,8 +295,8 @@ export default function Inventory() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setTotalRegistros(data.Total || 0);
+      const data: ApiResponse = await response.json();
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching total products:', err);
       setTotalRegistros(0);
@@ -217,45 +311,111 @@ export default function Inventory() {
       const response = await fetch(`http://localhost:3000/api/inventarios/${id}`);
       
       if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
       }
       
       const data = await response.json();
       setSelectedProduct(data);
     } catch (err) {
       console.error('Error fetching product details:', err);
-      setError(err instanceof Error ? err.message : 'Error al cargar los detalles del producto');
+      const errorMessage = err instanceof Error ? err.message : 'Error al cargar los detalles del producto';
+      setError(errorMessage);
+      showErrorAlert('Error', errorMessage);
     }
   };
 
-  // Funciones CRUD (Simuladas - Comentadas hasta que estén los SPs)
+  const fetchProductoParaEditar = async (id: number) => {
+    try {
+      setFormLoading(true);
+      showLoadingAlert('Cargando datos del producto...');
+      
+      const response = await fetch(`http://localhost:3000/api/inventarios/${id}/editar`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setEditingProduct(data);
+      
+      setFormData({
+        StockItemName: data.StockItemName || '',
+        SupplierName: data.SupplierName || '',
+        ColorName: data.ColorName || '',
+        UnitPackageName: data.UnitPackageName || '',
+        OuterPackageName: data.OuterPackageName || '',
+        QuantityPerOuter: data.QuantityPerOuter || 0,
+        Brand: data.Brand || '',
+        Size: data.Size || '',
+        TaxRate: data.TaxRate || 0,
+        UnitPrice: data.UnitPrice || 0,
+        RecommendedRetailPrice: data.RecommendedRetailPrice || 0,
+        LeadTimeDays: data.LeadTimeDays || 0,
+        Barcode: data.Barcode || '',
+        IsChillerStock: data.IsChillerStock || false,
+        TypicalWeightPerUnit: data.TypicalWeightPerUnit || 1.0,
+        MarketingComments: data.MarketingComments || '',
+        InternalComments: data.InternalComments || '',
+        StockGroupNames: data.StockGroupNames || ''
+      });
+      
+      setShowForm(true);
+      closeAlert();
+      
+    } catch (err) {
+      console.error('Error cargando producto para editar:', err);
+      closeAlert();
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+      showErrorAlert('Error', `No se pudieron cargar los datos del producto: ${errorMessage}`);
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   const crearProducto = async (productoData: ProductFormData) => {
     try {
       setFormLoading(true);
+      showLoadingAlert('Creando producto...');
       
-      // SIMULACIÓN - Reemplazar con endpoint real cuando esté disponible
-      // const response = await fetch('http://localhost:3000/api/inventarios', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(productoData)
-      // });
+      const response = await fetch('http://localhost:3000/api/inventarios', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...productoData,
+          TypicalWeightPerUnit: productoData.TypicalWeightPerUnit || 1.0
+        })
+      });
       
-      // if (!response.ok) throw new Error('Error al crear producto');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.details || 'Error al crear producto');
+      }
       
-      // Simulación de éxito
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await response.json();
       
-      // Mostrar alerta de éxito
-      Swing.success('Producto creado exitosamente');
+      closeAlert();
+      showSuccessAlert('¡Éxito!', 'Producto creado exitosamente');
       
-      // Recargar productos
       fetchProducts();
       setShowForm(false);
       resetForm();
       
     } catch (err) {
       console.error('Error creando producto:', err);
-      Swing.error('Error al crear el producto');
+      closeAlert();
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+      
+      if (errorMessage.includes('Proveedor no encontrado')) {
+        showErrorAlert('Error de Proveedor', 'El proveedor seleccionado no existe. Por favor, seleccione un proveedor válido.');
+      } else if (errorMessage.includes('Tipo de paquete')) {
+        showErrorAlert('Error de Paquete', 'El tipo de paquete seleccionado no existe. Por favor, seleccione tipos de paquete válidos.');
+      } else {
+        showErrorAlert('Error', `No se pudo crear el producto: ${errorMessage}`);
+      }
     } finally {
       setFormLoading(false);
     }
@@ -264,23 +424,29 @@ export default function Inventory() {
   const modificarProducto = async (id: number, productoData: ProductFormData) => {
     try {
       setFormLoading(true);
+      showLoadingAlert('Actualizando producto...');
       
-      // SIMULACIÓN - Reemplazar con endpoint real cuando esté disponible
-      // const response = await fetch(`http://localhost:3000/api/inventarios/${id}`, {
-      //   method: 'PUT',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(productoData)
-      // });
+      const response = await fetch(`http://localhost:3000/api/inventarios/${id}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...productoData,
+          TypicalWeightPerUnit: productoData.TypicalWeightPerUnit || 1.0
+        })
+      });
       
-      // if (!response.ok) throw new Error('Error al modificar producto');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.details || 'Error al modificar producto');
+      }
       
-      // Simulación de éxito
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await response.json();
       
-      // Mostrar alerta de éxito
-      Swing.success('Producto modificado exitosamente');
+      closeAlert();
+      showSuccessAlert('¡Éxito!', 'Producto modificado exitosamente');
       
-      // Recargar productos
       fetchProducts();
       setShowForm(false);
       setEditingProduct(null);
@@ -288,104 +454,132 @@ export default function Inventory() {
       
     } catch (err) {
       console.error('Error modificando producto:', err);
-      Swing.error('Error al modificar el producto');
+      closeAlert();
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+      
+      if (errorMessage.includes('Ya existe un producto con el nombre') || errorMessage.includes('Nombre duplicado')) {
+        showErrorAlert('Nombre Duplicado', 'Ya existe un producto con ese nombre. Por favor, use un nombre diferente.');
+      } else if (errorMessage.includes('Producto no encontrado')) {
+        showErrorAlert('Producto No Encontrado', 'El producto que intenta modificar no existe.');
+      } else if (errorMessage.includes('Proveedor no encontrado') || errorMessage.includes('Tipo de paquete')) {
+        showErrorAlert('Error de Datos', 'Los datos de referencia no existen. Verifique el proveedor y tipos de paquete.');
+      } else {
+        showErrorAlert('Error', `No se pudo modificar el producto: ${errorMessage}`);
+      }
     } finally {
       setFormLoading(false);
     }
   };
 
   const eliminarProducto = async (id: number) => {
+    const confirmed = await showConfirmAlert(
+      '¿Eliminar producto?',
+      'Esta acción no se puede deshacer. ¿Estás seguro de que deseas eliminar este producto?'
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+    
     try {
-      // Confirmación antes de eliminar
-      if (!confirm('¿Estás seguro de que deseas eliminar este producto?')) {
-        return;
+      showLoadingAlert('Eliminando producto...');
+      
+      const response = await fetch(`http://localhost:3000/api/inventarios/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.details || 'Error al eliminar producto');
       }
       
-      // SIMULACIÓN - Reemplazar con endpoint real cuando esté disponible
-      // const response = await fetch(`http://localhost:3000/api/inventarios/${id}`, {
-      //   method: 'DELETE'
-      // });
+      const result = await response.json();
       
-      // if (!response.ok) throw new Error('Error al eliminar producto');
+      closeAlert();
+      showSuccessAlert('¡Éxito!', 'Producto eliminado exitosamente');
       
-      // Simulación de éxito
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Mostrar alerta de éxito
-      Swing.success('Producto eliminado exitosamente');
-      
-      // Recargar productos
       fetchProducts();
       setSelectedProduct(null);
       
     } catch (err) {
       console.error('Error eliminando producto:', err);
-      Swing.error('Error al eliminar el producto');
+      closeAlert();
+      const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+      
+      if (errorMessage.includes('tiene registros relacionados')) {
+        showErrorAlert('No Se Puede Eliminar', 'El producto tiene registros relacionados en órdenes de venta, facturas u órdenes de compra. No se puede eliminar.');
+      } else if (errorMessage.includes('no existe')) {
+        showErrorAlert('Producto No Encontrado', 'El producto que intenta eliminar no existe.');
+      } else {
+        showErrorAlert('Error', `No se pudo eliminar el producto: ${errorMessage}`);
+      }
     }
   };
 
-  // Función para resetear el formulario
   const resetForm = () => {
     setFormData({
-      nombre_producto: '',
-      proveedor_id: 0,
-      color: '',
-      unidad_empaquetamiento: '',
-      empaquetamiento_externo: '',
-      cantidad_empaquetamiento: 0,
-      marca: '',
-      talla_tamano: '',
-      impuesto: 0,
-      precio_unitario: 0,
-      precio_venta: 0,
-      paso: '',
-      palabras_clave: '',
-      cantidad_disponible: 0,
-      ubicacion: ''
+      StockItemName: '',
+      SupplierName: '',
+      ColorName: '',
+      UnitPackageName: '',
+      OuterPackageName: '',
+      QuantityPerOuter: 0,
+      Brand: '',
+      Size: '',
+      TaxRate: 0,
+      UnitPrice: 0,
+      RecommendedRetailPrice: 0,
+      LeadTimeDays: 0,
+      Barcode: '',
+      IsChillerStock: false,
+      TypicalWeightPerUnit: 1.0,
+      MarketingComments: '',
+      InternalComments: '',
+      StockGroupNames: ''
     });
   };
 
-  // Función para abrir formulario de creación
   const abrirFormularioCrear = () => {
     setEditingProduct(null);
     resetForm();
     setShowForm(true);
   };
 
-  // Función para abrir formulario de edición
   const abrirFormularioEditar = (producto: ProductDetails) => {
-    setEditingProduct(producto);
-    setFormData({
-      nombre_producto: producto.nombre_producto,
-      proveedor_id: producto.proveedor_id || 0,
-      color: producto.color,
-      unidad_empaquetamiento: producto.unidad_empaquetamiento,
-      empaquetamiento_externo: producto.empaquetamiento_externo,
-      cantidad_empaquetamiento: producto.cantidad_empaquetamiento,
-      marca: producto.marca,
-      talla_tamano: producto.talla_tamano,
-      impuesto: producto.impuesto,
-      precio_unitario: producto.precio_unitario,
-      precio_venta: producto.precio_venta,
-      paso: producto.paso,
-      palabras_clave: producto.palabras_clave,
-      cantidad_disponible: producto.cantidad_disponible,
-      ubicacion: producto.ubicacion
-    });
-    setShowForm(true);
+    fetchProductoParaEditar(producto.StockItemID);
   };
 
-  // Función para manejar envío del formulario
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validación básica del formulario
+    if (!formData.StockItemName.trim()) {
+      showErrorAlert('Error de Validación', 'El nombre del producto es obligatorio.');
+      return;
+    }
+    
+    if (!formData.SupplierName) {
+      showErrorAlert('Error de Validación', 'Debe seleccionar un proveedor.');
+      return;
+    }
+    
+    if (!formData.UnitPackageName) {
+      showErrorAlert('Error de Validación', 'Debe seleccionar una unidad de empaquetamiento.');
+      return;
+    }
+    
+    if (!formData.OuterPackageName) {
+      showErrorAlert('Error de Validación', 'Debe seleccionar un empaquetamiento externo.');
+      return;
+    }
+    
     if (editingProduct) {
-      modificarProducto(editingProduct.ProductID, formData);
+      modificarProducto(editingProduct.StockItemID, formData);
     } else {
       crearProducto(formData);
     }
   };
 
-  // Función para buscar proveedor por nombre
   const searchSupplierByName = (supplierName: string) => {
     navigate('/proveedores', { 
       state: { 
@@ -397,7 +591,7 @@ export default function Inventory() {
   };
 
   const handleSearch = () => {
-    setPaginaActual(1); // Resetear a primera página al buscar
+    setPaginaActual(1);
     fetchProducts(searchTerm, groupFilter);
   };
 
@@ -412,7 +606,6 @@ export default function Inventory() {
     fetchProductDetails(product.id);
   };
 
-  // Funciones de navegación de paginación
   const irAPagina = (pagina: number) => {
     setPaginaActual(pagina);
     fetchProducts(searchTerm, groupFilter);
@@ -430,12 +623,19 @@ export default function Inventory() {
     }
   };
 
-  // Efecto para cargar datos cuando cambia la página
   useEffect(() => {
     if (!loading) {
       fetchProducts(searchTerm, groupFilter);
     }
   }, [paginaActual, tamanoPagina]);
+
+  const formatCurrency = (amount: number) => {
+    if (!amount) return "N/A";
+    return new Intl.NumberFormat('es-CR', {
+      style: 'currency',
+      currency: 'CRC'
+    }).format(amount);
+  };
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -443,7 +643,9 @@ export default function Inventory() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-green-700 dark:text-green-400">Inventarios</h1>
-            <p className="text-muted-foreground mt-2">Consulta y gestiona los productos en inventario</p>
+            <p className="text-muted-foreground mt-2">
+              Consulta y gestiona los productos en inventario
+            </p>
           </div>
           <Button onClick={abrirFormularioCrear} className="bg-green-600 hover:bg-green-700">
             <Plus className="h-4 w-4 mr-2" />
@@ -458,7 +660,6 @@ export default function Inventory() {
         </Card>
       )}
 
-      {/* Filtros principales - SOLO NOMBRE Y GRUPO */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4" style={{ animationDelay: '100ms' }}>
         <Card className="p-6 hover-lift">
           <label className="text-sm font-medium mb-2 block">Buscar por nombre</label>
@@ -489,13 +690,9 @@ export default function Inventory() {
               ))}
             </SelectContent>
           </Select>
-          {filtrosLoading && (
-            <p className="text-xs text-muted-foreground mt-1">Cargando grupos...</p>
-          )}
         </Card>
       </div>
 
-      {/* Botones de búsqueda */}
       <div className="flex gap-4">
         <Button onClick={handleSearch} className="flex-1" disabled={loading || filtrosLoading}>
           <Search className="h-4 w-4 mr-2" />
@@ -507,7 +704,6 @@ export default function Inventory() {
         </Button>
       </div>
 
-      {/* Controles de paginación superiores */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -542,15 +738,20 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* Tabla de resultados */}
       <Card className="overflow-hidden shadow-lg animate-fade-in" style={{ animationDelay: '200ms' }}>
         {loading ? (
           <div className="p-8 text-center">
-            <p>Cargando productos...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2">Cargando productos...</p>
           </div>
         ) : products.length === 0 ? (
           <div className="p-8 text-center">
             <p>No se encontraron productos</p>
+            {searchTerm || groupFilter ? (
+              <p className="text-sm text-muted-foreground mt-2">
+                Intenta ajustar los filtros de búsqueda
+              </p>
+            ) : null}
           </div>
         ) : (
           <>
@@ -565,10 +766,20 @@ export default function Inventory() {
               </TableHeader>
               <TableBody>
                 {products.map((product) => (
-                  <TableRow key={product.id}>
+                  <TableRow key={product.id} className="hover:bg-muted/50">
                     <TableCell className="font-medium">{product.nombre_producto}</TableCell>
-                    <TableCell>{product.grupo}</TableCell>
-                    <TableCell>{product.cantidad_inventario}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                        {product.grupo}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`font-medium ${
+                        product.cantidad_inventario > 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {product.cantidad_inventario}
+                      </span>
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button
@@ -586,7 +797,6 @@ export default function Inventory() {
               </TableBody>
             </Table>
             
-            {/* Controles de paginación inferiores */}
             <div className="flex items-center justify-between p-4 border-t">
               <div className="text-sm text-muted-foreground">
                 Página {paginaActual} de {totalPaginas}
@@ -604,7 +814,6 @@ export default function Inventory() {
                 </Button>
                 
                 <div className="flex gap-1">
-                  {/* Mostrar números de página */}
                   {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
                     let paginaNumero;
                     if (totalPaginas <= 5) {
@@ -647,7 +856,6 @@ export default function Inventory() {
         )}
       </Card>
 
-      {/* Modal de detalles */}
       <Dialog open={!!selectedProduct} onOpenChange={() => setSelectedProduct(null)}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -670,9 +878,6 @@ export default function Inventory() {
                       {selectedProduct.nombre_proveedor}
                       <ExternalLink className="h-3 w-3" />
                     </button>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Click para ver detalles del proveedor
-                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Color</p>
@@ -695,8 +900,8 @@ export default function Inventory() {
                     <p className="font-medium">{selectedProduct.marca || "N/A"}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Tallas / Tamaño</p>
-                    <p className="font-medium">{selectedProduct.talla_tamano || "N/A"}</p>
+                    <p className="text-sm text-muted-foreground">Tamaño</p>
+                    <p className="font-medium">{selectedProduct.tamano || "N/A"}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Impuesto</p>
@@ -704,15 +909,15 @@ export default function Inventory() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Precio Unitario</p>
-                    <p className="font-medium">${selectedProduct.precio_unitario?.toFixed(2) || "0.00"}</p>
+                    <p className="font-medium">{formatCurrency(selectedProduct.precio_unitario)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Precio Venta</p>
-                    <p className="font-medium">${selectedProduct.precio_venta?.toFixed(2) || "N/A"}</p>
+                    <p className="font-medium">{formatCurrency(selectedProduct.precio_venta)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Paso</p>
-                    <p className="font-medium">{selectedProduct.paso || "N/A"}</p>
+                    <p className="text-sm text-muted-foreground">Lead Time (Días)</p>
+                    <p className="font-medium">{selectedProduct.paso}</p>
                   </div>
                 </div>
               </div>
@@ -725,15 +930,18 @@ export default function Inventory() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Cantidad Disponible</p>
-                  <p className="font-medium">{selectedProduct.cantidad_disponible}</p>
+                  <p className={`font-medium ${
+                    selectedProduct.cantidad_disponible > 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {selectedProduct.cantidad_disponible}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Ubicación</p>
+                  <p className="text-sm text-muted-foreground">Ubicación/Barcode</p>
                   <p className="font-medium">{selectedProduct.ubicacion || "N/A"}</p>
                 </div>
               </div>
 
-              {/* Botones de acción en detalles */}
               <div className="flex gap-2 pt-4 border-t">
                 <Button
                   onClick={() => abrirFormularioEditar(selectedProduct)}
@@ -744,7 +952,7 @@ export default function Inventory() {
                   Modificar
                 </Button>
                 <Button
-                  onClick={() => eliminarProducto(selectedProduct.ProductID)}
+                  onClick={() => eliminarProducto(selectedProduct.StockItemID)}
                   variant="destructive"
                   className="flex-1"
                 >
@@ -757,7 +965,6 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal de formulario para crear/editar producto */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -768,141 +975,244 @@ export default function Inventory() {
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <label className="text-sm font-medium mb-2 block">Nombre del Producto</label>
+                <label className="text-sm font-medium mb-2 block">Nombre del Producto *</label>
                 <Input
-                  value={formData.nombre_producto}
-                  onChange={(e) => setFormData({...formData, nombre_producto: e.target.value})}
+                  value={formData.StockItemName}
+                  onChange={(e) => setFormData({...formData, StockItemName: e.target.value})}
                   required
+                  placeholder="Ingrese el nombre del producto"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Proveedor ID</label>
-                <Input
-                  type="number"
-                  value={formData.proveedor_id}
-                  onChange={(e) => setFormData({...formData, proveedor_id: parseInt(e.target.value)})}
+                <label className="text-sm font-medium mb-2 block">Proveedor *</label>
+                <Select 
+                  value={formData.SupplierName} 
+                  onValueChange={(value) => setFormData({...formData, SupplierName: value})}
+                  disabled={opcionesCargando}
                   required
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {proveedores.map((proveedor) => (
+                      <SelectItem key={proveedor.id} value={proveedor.nombre}>
+                        {proveedor.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               <div>
                 <label className="text-sm font-medium mb-2 block">Color</label>
-                <Input
-                  value={formData.color}
-                  onChange={(e) => setFormData({...formData, color: e.target.value})}
-                />
+                <Select 
+                  value={formData.ColorName} 
+                  onValueChange={(value) => setFormData({...formData, ColorName: value})}
+                  disabled={opcionesCargando}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar color" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {colores.map((color) => (
+                      <SelectItem key={color.id} value={color.nombre}>
+                        {color.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Unidad de Empaquetamiento</label>
-                <Input
-                  value={formData.unidad_empaquetamiento}
-                  onChange={(e) => setFormData({...formData, unidad_empaquetamiento: e.target.value})}
+                <label className="text-sm font-medium mb-2 block">Unidad Empaquetamiento *</label>
+                <Select 
+                  value={formData.UnitPackageName} 
+                  onValueChange={(value) => setFormData({...formData, UnitPackageName: value})}
+                  disabled={opcionesCargando}
                   required
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar unidad" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tiposPaquete.map((paquete) => (
+                      <SelectItem key={paquete.id} value={paquete.nombre}>
+                        {paquete.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Empaquetamiento Externo</label>
-                <Input
-                  value={formData.empaquetamiento_externo}
-                  onChange={(e) => setFormData({...formData, empaquetamiento_externo: e.target.value})}
+                <label className="text-sm font-medium mb-2 block">Empaquetamiento Externo *</label>
+                <Select 
+                  value={formData.OuterPackageName} 
+                  onValueChange={(value) => setFormData({...formData, OuterPackageName: value})}
+                  disabled={opcionesCargando}
                   required
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar empaque externo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tiposPaquete.map((paquete) => (
+                      <SelectItem key={paquete.id} value={paquete.nombre}>
+                        {paquete.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Cantidad de Empaquetamiento</label>
+                <label className="text-sm font-medium mb-2 block">Cantidad por Empaque *</label>
                 <Input
                   type="number"
-                  value={formData.cantidad_empaquetamiento}
-                  onChange={(e) => setFormData({...formData, cantidad_empaquetamiento: parseInt(e.target.value)})}
+                  value={formData.QuantityPerOuter}
+                  onChange={(e) => setFormData({...formData, QuantityPerOuter: parseInt(e.target.value) || 0})}
                   required
+                  min="1"
+                  placeholder="Cantidad por empaque externo"
                 />
               </div>
               
               <div>
                 <label className="text-sm font-medium mb-2 block">Marca</label>
                 <Input
-                  value={formData.marca}
-                  onChange={(e) => setFormData({...formData, marca: e.target.value})}
+                  value={formData.Brand}
+                  onChange={(e) => setFormData({...formData, Brand: e.target.value})}
+                  placeholder="Marca del producto"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Tamaño/Talla</label>
+                <label className="text-sm font-medium mb-2 block">Tamaño</label>
                 <Input
-                  value={formData.talla_tamano}
-                  onChange={(e) => setFormData({...formData, talla_tamano: e.target.value})}
+                  value={formData.Size}
+                  onChange={(e) => setFormData({...formData, Size: e.target.value})}
+                  placeholder="Tamaño o talla"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Impuesto (%)</label>
+                <label className="text-sm font-medium mb-2 block">Impuesto (%) *</label>
                 <Input
                   type="number"
                   step="0.01"
-                  value={formData.impuesto}
-                  onChange={(e) => setFormData({...formData, impuesto: parseFloat(e.target.value)})}
+                  value={formData.TaxRate}
+                  onChange={(e) => setFormData({...formData, TaxRate: parseFloat(e.target.value) || 0})}
                   required
+                  min="0"
+                  max="100"
+                  placeholder="Porcentaje de impuesto"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Precio Unitario</label>
+                <label className="text-sm font-medium mb-2 block">Precio Unitario *</label>
                 <Input
                   type="number"
                   step="0.01"
-                  value={formData.precio_unitario}
-                  onChange={(e) => setFormData({...formData, precio_unitario: parseFloat(e.target.value)})}
+                  value={formData.UnitPrice}
+                  onChange={(e) => setFormData({...formData, UnitPrice: parseFloat(e.target.value) || 0})}
                   required
+                  min="0"
+                  placeholder="Precio unitario"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Precio de Venta</label>
+                <label className="text-sm font-medium mb-2 block">Precio Venta Recomendado</label>
                 <Input
                   type="number"
                   step="0.01"
-                  value={formData.precio_venta}
-                  onChange={(e) => setFormData({...formData, precio_venta: parseFloat(e.target.value)})}
+                  value={formData.RecommendedRetailPrice || ''}
+                  onChange={(e) => setFormData({...formData, RecommendedRetailPrice: e.target.value ? parseFloat(e.target.value) : undefined})}
+                  min="0"
+                  placeholder="Precio de venta recomendado"
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium mb-2 block">Paso</label>
+                <label className="text-sm font-medium mb-2 block">Lead Time (Días) *</label>
                 <Input
-                  value={formData.paso}
-                  onChange={(e) => setFormData({...formData, paso: e.target.value})}
+                  type="number"
+                  value={formData.LeadTimeDays}
+                  onChange={(e) => setFormData({...formData, LeadTimeDays: parseInt(e.target.value) || 0})}
+                  required
+                  min="0"
+                  placeholder="Días de lead time"
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-2 block">Código de Barras</label>
+                <Input
+                  value={formData.Barcode}
+                  onChange={(e) => setFormData({...formData, Barcode: e.target.value})}
+                  placeholder="Código de barras"
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium mb-2 block">Peso Típico por Unidad (kg)</label>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={formData.TypicalWeightPerUnit || 1.0}
+                  onChange={(e) => setFormData({...formData, TypicalWeightPerUnit: parseFloat(e.target.value) || 1.0})}
+                  min="0.001"
+                  placeholder="Peso típico por unidad"
                 />
               </div>
               
               <div className="col-span-2">
-                <label className="text-sm font-medium mb-2 block">Palabras Clave</label>
+                <label className="text-sm font-medium mb-2 block">Grupos de Stock</label>
+                <Select 
+                  value={formData.StockGroupNames} 
+                  onValueChange={(value) => setFormData({...formData, StockGroupNames: value})}
+                  disabled={opcionesCargando}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar grupos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gruposStock.map((grupo) => (
+                      <SelectItem key={grupo.id} value={grupo.nombre}>
+                        {grupo.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="col-span-2">
+                <label className="text-sm font-medium mb-2 block">Comentarios de Marketing</label>
                 <Input
-                  value={formData.palabras_clave}
-                  onChange={(e) => setFormData({...formData, palabras_clave: e.target.value})}
+                  value={formData.MarketingComments}
+                  onChange={(e) => setFormData({...formData, MarketingComments: e.target.value})}
+                  placeholder="Comentarios para marketing"
                 />
               </div>
               
-              <div>
-                <label className="text-sm font-medium mb-2 block">Cantidad Disponible</label>
+              <div className="col-span-2">
+                <label className="text-sm font-medium mb-2 block">Comentarios Internos</label>
                 <Input
-                  type="number"
-                  value={formData.cantidad_disponible}
-                  onChange={(e) => setFormData({...formData, cantidad_disponible: parseInt(e.target.value)})}
-                  required
+                  value={formData.InternalComments}
+                  onChange={(e) => setFormData({...formData, InternalComments: e.target.value})}
+                  placeholder="Comentarios internos"
                 />
               </div>
-              
-              <div>
-                <label className="text-sm font-medium mb-2 block">Ubicación</label>
-                <Input
-                  value={formData.ubicacion}
-                  onChange={(e) => setFormData({...formData, ubicacion: e.target.value})}
-                />
-              </div>
+            </div>
+            
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <p className="text-sm text-blue-700">
+                <strong>Nota:</strong> Los campos marcados con * son obligatorios. 
+                Asegúrese de que el nombre del producto sea único en el sistema.
+              </p>
             </div>
             
             <DialogFooter className="mt-6">
@@ -915,7 +1225,14 @@ export default function Inventory() {
                 Cancelar
               </Button>
               <Button type="submit" disabled={formLoading}>
-                {formLoading ? 'Guardando...' : (editingProduct ? 'Modificar' : 'Crear')}
+                {formLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    {editingProduct ? 'Modificando...' : 'Creando...'}
+                  </>
+                ) : (
+                  editingProduct ? 'Modificar Producto' : 'Crear Producto'
+                )}
               </Button>
             </DialogFooter>
           </form>

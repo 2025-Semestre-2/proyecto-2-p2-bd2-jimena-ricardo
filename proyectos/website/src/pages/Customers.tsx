@@ -21,21 +21,17 @@ interface CustomerDetails {
   nombre_cliente: string;
   categoria: string;
   grupo_compra: string;
-  contacto_primario: string;
-  contacto_alternativo: string;
   cliente_facturar: number;
   metodo_entrega: string;
-  ciudad_entrega: string;
-  codigo_postal: string;
-  telefono: string;
-  fax: string;
-  dias_gracia_pago: number;
+  limite_credito: number;
+  fecha_apertura_cuenta: string;
+  descuento_estandar: number;
+  estado_cuenta_enviado: boolean;
+  credito_retenido: boolean;
+  dias_pago: number;
+  ruta_entrega: string;
+  posicion_ruta: string;
   sitio_web: string;
-  direccion_entrega: string;
-  direccion_entrega2: string;
-  codigo_postal_entrega: string;
-  latitud: number;
-  longitud: number;
 }
 
 // Interface para los filtros dinámicos
@@ -43,6 +39,16 @@ interface Filtro {
   tipo_filtro: string;
   valor: string;
   etiqueta: string;
+}
+
+// Interface para la respuesta de la API
+interface ApiResponse {
+  clientes: Customer[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+  };
 }
 
 export default function Customers() {
@@ -125,11 +131,11 @@ export default function Customers() {
       setError(null);
       
       const params = new URLSearchParams();
-      params.append('pagina', paginaActual.toString());
-      params.append('tamanoPagina', tamanoPagina.toString());
-      if (nombre) params.append('nombre', nombre);
-      if (categoria && categoria !== 'all') params.append('categoria', categoria);
-      if (metodoEntrega && metodoEntrega !== 'all') params.append('metodoEntrega', metodoEntrega);
+      params.append('page', paginaActual.toString());
+      params.append('pageSize', tamanoPagina.toString());
+      if (nombre) params.append('filtroNombre', nombre);
+      if (categoria && categoria !== 'all') params.append('filtroCategoria', categoria);
+      if (metodoEntrega && metodoEntrega !== 'all') params.append('filtroMetodoEntrega', metodoEntrega);
       
       const url = `http://localhost:3000/api/clientes?${params.toString()}`;
       
@@ -139,11 +145,13 @@ export default function Customers() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setCustomers(data);
+      const data: ApiResponse = await response.json();
+      setCustomers(data.clientes || []);
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching customers:', err);
       setError(err instanceof Error ? err.message : 'Error al cargar los clientes');
+      setCustomers([]);
     } finally {
       setLoading(false);
     }
@@ -153,11 +161,11 @@ export default function Customers() {
     try {
       setCargandoTotal(true);
       const params = new URLSearchParams();
-      if (searchTerm) params.append('nombre', searchTerm);
-      if (categoryFilter && categoryFilter !== 'all') params.append('categoria', categoryFilter);
-      if (deliveryMethodFilter && deliveryMethodFilter !== 'all') params.append('metodoEntrega', deliveryMethodFilter);
+      if (searchTerm) params.append('filtroNombre', searchTerm);
+      if (categoryFilter && categoryFilter !== 'all') params.append('filtroCategoria', categoryFilter);
+      if (deliveryMethodFilter && deliveryMethodFilter !== 'all') params.append('filtroMetodoEntrega', deliveryMethodFilter);
       
-      const url = `http://localhost:3000/api/clientes/total?${params.toString()}`;
+      const url = `http://localhost:3000/api/clientes?${params.toString()}&page=1&pageSize=1`;
       
       const response = await fetch(url);
       
@@ -165,8 +173,8 @@ export default function Customers() {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      setTotalRegistros(data.Total || 0);
+      const data: ApiResponse = await response.json();
+      setTotalRegistros(data.pagination?.total || 0);
     } catch (err) {
       console.error('Error fetching total customers:', err);
       setTotalRegistros(0);
@@ -193,8 +201,8 @@ export default function Customers() {
   };
 
   // Función para abrir Google Maps en nueva pestaña
-  const openGoogleMaps = (lat: number, lng: number) => {
-    const url = `https://www.google.com/maps?q=${lat},${lng}`;
+  const openGoogleMaps = (address: string) => {
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
     window.open(url, '_blank');
   };
 
@@ -239,6 +247,28 @@ export default function Customers() {
       fetchCustomers(searchTerm, categoryFilter, deliveryMethodFilter);
     }
   }, [paginaActual, tamanoPagina]);
+
+  // Formatear fecha
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES');
+  };
+
+  // Formatear moneda
+  const formatCurrency = (amount: number) => {
+    if (!amount) return "N/A";
+    return new Intl.NumberFormat('es-CR', {
+      style: 'currency',
+      currency: 'CRC'
+    }).format(amount);
+  };
+
+  // Formatear porcentaje
+  const formatPercentage = (percentage: number) => {
+    if (!percentage) return "N/A";
+    return `${percentage}%`;
+  };
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -362,11 +392,17 @@ export default function Customers() {
       <Card className="overflow-hidden shadow-lg animate-fade-in" style={{ animationDelay: '200ms' }}>
         {loading ? (
           <div className="p-8 text-center">
-            <p>Cargando clientes...</p>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-2">Cargando clientes...</p>
           </div>
         ) : customers.length === 0 ? (
           <div className="p-8 text-center">
             <p>No se encontraron clientes</p>
+            {searchTerm || categoryFilter || deliveryMethodFilter ? (
+              <p className="text-sm text-muted-foreground mt-2">
+                Intenta ajustar los filtros de búsqueda
+              </p>
+            ) : null}
           </div>
         ) : (
           <>
@@ -381,9 +417,13 @@ export default function Customers() {
               </TableHeader>
               <TableBody>
                 {customers.map((customer) => (
-                  <TableRow key={customer.id}>
+                  <TableRow key={customer.id} className="hover:bg-muted/50">
                     <TableCell className="font-medium">{customer.nombre}</TableCell>
-                    <TableCell>{customer.categoria}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                        {customer.categoria}
+                      </span>
+                    </TableCell>
                     <TableCell>{customer.metodo_entrega}</TableCell>
                     <TableCell>
                       <Button
@@ -468,10 +508,11 @@ export default function Customers() {
           </DialogHeader>
           {selectedCustomer && (
             <div className="space-y-6">
+              {/* Información Principal */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Nombre</p>
-                  <p className="font-medium">{selectedCustomer.nombre_cliente}</p>
+                  <p className="text-sm text-muted-foreground">Nombre del Cliente</p>
+                  <p className="font-medium text-lg">{selectedCustomer.nombre_cliente}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Categoría</p>
@@ -485,40 +526,61 @@ export default function Customers() {
                   <p className="text-sm text-muted-foreground">Método de Entrega</p>
                   <p className="font-medium">{selectedCustomer.metodo_entrega}</p>
                 </div>
+              </div>
+
+              {/* Información Financiera */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Contacto Primario</p>
-                  <p className="font-medium">{selectedCustomer.contacto_primario || "N/A"}</p>
+                  <p className="text-sm text-muted-foreground">Límite de Crédito</p>
+                  <p className="font-medium">{formatCurrency(selectedCustomer.limite_credito)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Contacto Alternativo</p>
-                  <p className="font-medium">{selectedCustomer.contacto_alternativo || "N/A"}</p>
+                  <p className="text-sm text-muted-foreground">Descuento Estándar</p>
+                  <p className="font-medium">{formatPercentage(selectedCustomer.descuento_estandar)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Cliente para Facturar ID</p>
-                  <p className="font-medium">{selectedCustomer.cliente_facturar}</p>
+                  <p className="text-sm text-muted-foreground">Días de Pago</p>
+                  <p className="font-medium">{selectedCustomer.dias_pago} días</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Ciudad de Entrega</p>
-                  <p className="font-medium">{selectedCustomer.ciudad_entrega || "N/A"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Código Postal</p>
-                  <p className="font-medium">{selectedCustomer.codigo_postal || "N/A"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Teléfono</p>
-                  <p className="font-medium">{selectedCustomer.telefono || "N/A"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Fax</p>
-                  <p className="font-medium">{selectedCustomer.fax || "N/A"}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Días de Gracia</p>
-                  <p className="font-medium">{selectedCustomer.dias_gracia_pago} días</p>
+                  <p className="text-sm text-muted-foreground">Fecha Apertura Cuenta</p>
+                  <p className="font-medium">{formatDate(selectedCustomer.fecha_apertura_cuenta)}</p>
                 </div>
               </div>
 
+              {/* Información Adicional */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Estado de Cuenta</p>
+                  <p className="font-medium">
+                    {selectedCustomer.estado_cuenta_enviado ? (
+                      <span className="text-green-600">Enviado</span>
+                    ) : (
+                      <span className="text-orange-600">No Enviado</span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Crédito</p>
+                  <p className="font-medium">
+                    {selectedCustomer.credito_retenido ? (
+                      <span className="text-red-600">Retenido</span>
+                    ) : (
+                      <span className="text-green-600">Activo</span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Ruta de Entrega</p>
+                  <p className="font-medium">{selectedCustomer.ruta_entrega || "N/A"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Posición en Ruta</p>
+                  <p className="font-medium">{selectedCustomer.posicion_ruta || "N/A"}</p>
+                </div>
+              </div>
+
+              {/* Sitio Web */}
               <div>
                 <p className="text-sm text-muted-foreground">Sitio Web</p>
                 {selectedCustomer.sitio_web ? (
@@ -536,77 +598,37 @@ export default function Customers() {
                 )}
               </div>
 
+              {/* Información de Referencia */}
               <div>
-                <p className="text-sm text-muted-foreground">Dirección de Entrega</p>
-                <p className="font-medium">
-                  {selectedCustomer.direccion_entrega} {selectedCustomer.direccion_entrega2 && `, ${selectedCustomer.direccion_entrega2}`}
-                </p>
+                <p className="text-sm text-muted-foreground">Cliente para Facturar ID</p>
+                <p className="font-medium">{selectedCustomer.cliente_facturar}</p>
               </div>
 
+              {/* Sección de Ubicación (Placeholder) */}
               <div>
-                <p className="text-sm text-muted-foreground">Código Postal de Entrega</p>
-                <p className="font-medium">{selectedCustomer.codigo_postal_entrega || "N/A"}</p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm text-muted-foreground">Información de Ubicación</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openGoogleMaps(selectedCustomer.nombre_cliente)}
+                    className="flex items-center gap-2"
+                  >
+                    <Navigation className="h-4 w-4" />
+                    Buscar en Maps
+                  </Button>
+                </div>
+                
+                <div className="border rounded-lg p-4 bg-muted/20">
+                  <div className="text-center">
+                    <MapPin className="h-8 w-8 mx-auto mb-2 text-primary opacity-50" />
+                    <p className="font-medium">Información de ubicación detallada</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Los datos sensibles de ubicación se almacenan en la base de datos corporativa
+                    </p>
+                  </div>
+                </div>
               </div>
-
-              {/* Sección de Mapa de Google Maps */}
-              {selectedCustomer.latitud && selectedCustomer.longitud && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-sm text-muted-foreground">Ubicación en Mapa</p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openGoogleMaps(selectedCustomer.latitud, selectedCustomer.longitud)}
-                      className="flex items-center gap-2"
-                    >
-                      <Navigation className="h-4 w-4" />
-                      Abrir en Google Maps
-                    </Button>
-                  </div>
-                  
-                  <div className="border rounded-lg overflow-hidden">
-                    <iframe
-                      title="Ubicación del cliente"
-                      width="100%"
-                      height="300"
-                      style={{ border: 0, borderRadius: '8px' }}
-                      loading="lazy"
-                      allowFullScreen
-                      src={`https://www.google.com/maps?q=${selectedCustomer.latitud},${selectedCustomer.longitud}&z=15&output=embed`}
-                    />
-                  </div>
-                  
-                  <div className="mt-2 grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Latitud:</span>
-                      <span className="ml-2 font-mono">{selectedCustomer.latitud.toFixed(6)}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Longitud:</span>
-                      <span className="ml-2 font-mono">{selectedCustomer.longitud.toFixed(6)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Fallback cuando no hay coordenadas */}
-              {(!selectedCustomer.latitud || !selectedCustomer.longitud) && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-3">Localización</p>
-                  <div className="aspect-video bg-muted rounded-lg flex items-center justify-center">
-                    <div className="text-center">
-                      <MapPin className="h-8 w-8 mx-auto mb-2 text-primary opacity-50" />
-                      <p className="font-medium">Ubicación no disponible</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Ciudad: {selectedCustomer.ciudad_entrega || "N/A"}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Dirección: {selectedCustomer.direccion_entrega}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </DialogContent>

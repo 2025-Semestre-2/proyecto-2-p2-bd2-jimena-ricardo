@@ -1,6 +1,6 @@
 const sql = require('mssql');
+const { exec } = require('child_process');
 
-// Configuración de conexiones por sucursal
 const dbConfigs = {
   'SJ': {
     server: '100.78.216.52',
@@ -37,91 +37,144 @@ const dbConfigs = {
   }
 };
 
-// Pool de conexiones
 const pools = {};
+let myTailscaleIP = null;
+let myBranch = null;
 
-// Función para obtener conexión según branch
-const getConnection = async (branch) => {
-  if (!pools[branch]) {
-    try {
-      pools[branch] = await new sql.ConnectionPool(dbConfigs[branch]).connect();
-      console.log(`Conectado a base de datos: ${branch}`);
-    } catch (err) {
-      console.error(`Error conectando a ${branch}:`, err);
-      throw err;
-    }
-  }
-  return pools[branch];
-};
+function isTailscaleIP(ip) {
+    if (!ip) return false;
+    const cleanIP = ip.replace('::ffff:', '');
+    const parts = cleanIP.split('.');
+    if (parts.length !== 4) return false;
+    const firstPart = parseInt(parts[0], 10);
+    const secondPart = parseInt(parts[1], 10);
+    return firstPart === 100 && secondPart >= 64 && secondPart <= 127;
+}
 
-// Middleware para detectar branch según IP
-const detectBranch = (req, res, next) => {
-  const clientIP = req.ip || req.connection.remoteAddress;
-  
-  console.log('IP del cliente:', clientIP);
-  
-  // Asignar branch según IP
-  if (clientIP.includes('100.78.216.52')) {
-    req.branch = 'SJ';
-  } else if (clientIP.includes('100.82.130.27')) {
-    req.branch = 'LM'; 
-  } else {
-    // Por defecto o para desarrollo
-    req.branch = 'SJ';
-  }
-  
-  console.log('Branch detectado:', req.branch);
-  next();
-};
-
-// Middleware para determinar base de datos según rol
-const determineDatabase = async (req, res, next) => {
-  try {
-    const { username, password } = req.body;
-    
-    if (username && password) {
-      // Intentar autenticar en todas las bases de datos
-      for (const branch of ['SJ', 'LM', 'CORP']) {
-        try {
-          const pool = await getConnection(branch);
-          const result = await pool.request()
-            .input('username', sql.NVarChar(50), username)
-            .input('password', sql.NVarChar(255), password)
-            .execute('sp_ValidateUserCredentials');
-          
-          if (result.recordset.length > 0) {
-            req.user = result.recordset[0];
-            req.user.branch = branch;
-            
-            // Si es corporativo, usar base corporativa para consultas
-            if (req.user.rol === 'corporativo') {
-              req.database = 'CORP';
-            } else {
-              req.database = branch;
+const getMyTailscaleIP = () => {
+    return new Promise((resolve) => {
+        exec('tailscale ip --4', (error, stdout) => {
+            if (error) {
+                resolve(null);
+                return;
             }
-            
-            console.log(`Usuario autenticado: ${username}, rol: ${req.user.rol}, database: ${req.database}`);
-            break;
-          }
-        } catch (err) {
-          console.log(`Usuario no encontrado en ${branch}`);
-        }
-      }
+            const ip = stdout.trim();
+            resolve(ip && isTailscaleIP(ip) ? ip : null);
+        });
+    });
+};
+
+const detectBranchFromIP = (ip) => {
+    if (!ip || !isTailscaleIP(ip)) return null;
+    
+    const parts = ip.split('.');
+    const secondPart = parseInt(parts[1], 10);
+    const thirdPart = parseInt(parts[2], 10);
+    
+    if (secondPart === 78 && thirdPart === 216) return 'SJ';
+    if (secondPart === 82 && thirdPart === 130) return 'LM';
+    if (secondPart === 64 || secondPart === 65) return 'CORP';
+    
+    return null;
+};
+
+const initializeServer = async () => {
+    myTailscaleIP = await getMyTailscaleIP();
+    if (myTailscaleIP) {
+        myBranch = detectBranchFromIP(myTailscaleIP);
+        console.log(`Servidor iniciado - IP: ${myTailscaleIP}, Branch: ${myBranch}`);
     } else {
-      // Si no hay credenciales, usar branch detectado por IP
-      req.database = req.branch;
+        console.log('Servidor iniciado - No se detectó IP de Tailscale');
+    }
+};
+
+const getConnection = async (branch) => {
+    if (!pools[branch]) {
+        pools[branch] = await new sql.ConnectionPool(dbConfigs[branch]).connect();
+    }
+    return pools[branch];
+};
+
+const getClientRealIp = (req) => {
+    const xForwardedFor = req.headers['x-forwarded-for'];
+    if (xForwardedFor) {
+        const ips = xForwardedFor.split(',');
+        const realIp = ips[0].trim();
+        if (realIp && realIp !== '::1') return realIp;
+    }
+    
+    const xRealIp = req.headers['x-real-ip'];
+    if (xRealIp && xRealIp !== '::1') return xRealIp;
+    
+    if (req.clientRealIp && req.clientRealIp !== '::1') return req.clientRealIp;
+    
+    return req.connection.remoteAddress;
+};
+
+const detectBranch = (req, res, next) => {
+    const clientIP = getClientRealIp(req);
+    
+    if (!isTailscaleIP(clientIP)) {
+        if ((clientIP === '127.0.0.1' || clientIP === '::1') && myTailscaleIP) {
+            req.branch = myBranch;
+        } else {
+            return res.status(403).json({ error: 'Acceso no autorizado' });
+        }
+    } else {
+        req.branch = detectBranchFromIP(clientIP);
+        if (!req.branch) {
+            return res.status(403).json({ error: 'Branch no reconocido' });
+        }
     }
     
     next();
-  } catch (error) {
-    console.error('Error en determineDatabase:', error);
-    res.status(500).json({ error: 'Error interno del servidor' });
-  }
+};
+
+const determineDatabase = async (req, res, next) => {
+    try {
+        if (req.path === '/api/auth/login' && req.method === 'POST') {
+            const { username, password } = req.body;
+            
+            if (username && password) {
+                const pool = await getConnection(req.branch);
+                const result = await pool.request()
+                    .input('username', sql.NVarChar(50), username)
+                    .input('password', sql.NVarChar(255), password)
+                    .execute('sp_ValidateUserCredentials');
+                
+                if (result.recordset.length > 0) {
+                    const user = result.recordset[0];
+                    
+                    if (user.branch === req.branch) {
+                        req.user = user;
+                        req.database = user.rol === 'corporativo' ? 'CORP' : user.branch;
+                    } else {
+                        return res.status(401).json({ error: 'Usuario no autorizado para esta sucursal' });
+                    }
+                } else {
+                    return res.status(401).json({ error: 'Credenciales inválidas' });
+                }
+            }
+        } else {
+            if (req.user) {
+                req.database = req.user.rol === 'corporativo' ? 'CORP' : req.user.branch;
+            } else {
+                req.database = req.branch;
+            }
+        }
+        
+        next();
+    } catch (error) {
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
 };
 
 module.exports = {
-  sql,
-  getConnection,
-  detectBranch,
-  determineDatabase
+    sql,
+    getConnection,
+    detectBranch,
+    determineDatabase,
+    initializeServer,
+    myTailscaleIP,
+    myBranch
 };

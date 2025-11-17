@@ -15,7 +15,9 @@ const authController = {
           fullname: req.user.fullname,
           email: req.user.email,
           rol: req.user.rol,
-          branch: req.user.branch
+          branch: req.user.branch,
+          active: req.user.active,
+          hiredate: req.user.hiredate
         }
       });
     } catch (error) {
@@ -33,7 +35,9 @@ const authController = {
           fullname: req.user.fullname,
           email: req.user.email,
           rol: req.user.rol,
-          branch: req.user.branch
+          branch: req.user.branch,
+          active: req.user.active,
+          hiredate: req.user.hiredate
         }
       });
     } else {

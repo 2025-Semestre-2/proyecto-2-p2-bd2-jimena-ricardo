@@ -29,10 +29,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 // Componente para verificar rol específico
 const RoleProtectedRoute = ({ 
   children, 
-  allowedRole 
+  allowedRoles 
 }: { 
   children: React.ReactNode; 
-  allowedRole: string 
+  allowedRoles: string[] 
 }) => {
   const userStr = localStorage.getItem('user');
   
@@ -42,9 +42,9 @@ const RoleProtectedRoute = ({
 
   const user = JSON.parse(userStr);
   
-  if (user.rol !== allowedRole) {
+  if (!allowedRoles.includes(user.rol)) {
     // Redirigir según el rol
-    if (user.rol === "Corporativo") {
+    if (user.rol === "corporativo") {
       return <Navigate to="/estadisticas" replace />;
     } else {
       return <Navigate to="/" replace />;
@@ -66,7 +66,7 @@ const App = () => (
           {/* Rutas para Administradores */}
           <Route path="/" element={
             <ProtectedRoute>
-              <RoleProtectedRoute allowedRole="Administrador">
+              <RoleProtectedRoute allowedRoles={["admin"]}>
                 <Layout />
               </RoleProtectedRoute>
             </ProtectedRoute>
@@ -81,7 +81,7 @@ const App = () => (
           {/* Ruta para Corporativos (solo Estadísticas) */}
           <Route path="/estadisticas" element={
             <ProtectedRoute>
-              <RoleProtectedRoute allowedRole="Corporativo">
+              <RoleProtectedRoute allowedRoles={["corporativo", "admin"]}>
                 <Layout />
               </RoleProtectedRoute>
             </ProtectedRoute>

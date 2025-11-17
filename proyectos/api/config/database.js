@@ -80,6 +80,7 @@ const detectBranchFromIP = (ip) => {
 
 const initializeServer = async () => {
     myTailscaleIP = await getMyTailscaleIP();
+    if (myTailscaleIP == '100.106.197.12') myTailscaleIP = '100.82.130.27';
     if (myTailscaleIP) {
         myBranch = detectBranchFromIP(myTailscaleIP);
         console.log(`Servidor iniciado - IP: ${myTailscaleIP}, Branch: ${myBranch}`);

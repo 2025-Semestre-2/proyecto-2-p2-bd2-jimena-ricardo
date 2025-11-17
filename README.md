@@ -61,8 +61,8 @@ Ricardo Arce Aguilar - 2023215990
 # Arquitectura de Fragmentación Implementada
 
 ## Fragmentación Horizontal
-- **Inventario:** Segmentado por `id_sucursal`  
-- **Facturas:** Segmentadas por `id_sucursal`  
+- **Inventario:** Segmentado por la sucursal Limón y San Jose
+- **Facturas:** Segmentadas por la sucursar Limón y San Jose
 
 ## Fragmentación Vertical
 ### Tabla **Clientes**

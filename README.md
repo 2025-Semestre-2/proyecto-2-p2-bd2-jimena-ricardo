@@ -66,10 +66,8 @@ Ricardo Arce Aguilar - 2023215990
 
 ## Fragmentación Vertical
 ### Tabla **Clientes**
-- **Sucursales:**  
-  - `id_cliente`, `nombre`, `activo`  
-- **Corporativo:**  
-  - `id_cliente`, `email`, `telefono`, `direccion`, `datos_sensibles`  
+- **Sucursales**   
+- **Corporativo**  
 
 
 ---

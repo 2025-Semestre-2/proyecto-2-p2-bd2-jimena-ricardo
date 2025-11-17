@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RotateCcw, ExternalLink, Plus, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, RotateCcw, ExternalLink, Plus, Edit, Trash2, ChevronLeft, ChevronRight, Eye } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Swal from 'sweetalert2';
 
@@ -471,10 +471,10 @@ export default function Inventory() {
     }
   };
 
-  const eliminarProducto = async (id: number) => {
+  const eliminarProducto = async (id: number, nombre: string) => {
     const confirmed = await showConfirmAlert(
       '¿Eliminar producto?',
-      'Esta acción no se puede deshacer. ¿Estás seguro de que deseas eliminar este producto?'
+      `¿Estás seguro de que deseas eliminar el producto "${nombre}"? Esta acción no se puede deshacer.`
     );
     
     if (!confirmed) {
@@ -545,8 +545,8 @@ export default function Inventory() {
     setShowForm(true);
   };
 
-  const abrirFormularioEditar = (producto: ProductDetails) => {
-    fetchProductoParaEditar(producto.StockItemID);
+  const abrirFormularioEditar = (producto: Product) => {
+    fetchProductoParaEditar(producto.id);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -761,7 +761,7 @@ export default function Inventory() {
                   <TableHead>Nombre del Producto</TableHead>
                   <TableHead>Grupo</TableHead>
                   <TableHead>Cantidad en Inventario</TableHead>
-                  <TableHead>Acciones</TableHead>
+                  <TableHead className="text-center">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -781,14 +781,36 @@ export default function Inventory() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 justify-center">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleViewDetails(product)}
                           disabled={loading}
+                          className="flex items-center gap-1"
                         >
-                          Ver Detalles
+                          <Eye className="h-3 w-3" />
+                          Detalles
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => abrirFormularioEditar(product)}
+                          disabled={loading}
+                          className="flex items-center gap-1"
+                        >
+                          <Edit className="h-3 w-3" />
+                          Modificar
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => eliminarProducto(product.id, product.nombre_producto)}
+                          disabled={loading}
+                          className="flex items-center gap-1"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Eliminar
                         </Button>
                       </div>
                     </TableCell>
@@ -940,25 +962,6 @@ export default function Inventory() {
                   <p className="text-sm text-muted-foreground">Ubicación/Barcode</p>
                   <p className="font-medium">{selectedProduct.ubicacion || "N/A"}</p>
                 </div>
-              </div>
-
-              <div className="flex gap-2 pt-4 border-t">
-                <Button
-                  onClick={() => abrirFormularioEditar(selectedProduct)}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Modificar
-                </Button>
-                <Button
-                  onClick={() => eliminarProducto(selectedProduct.StockItemID)}
-                  variant="destructive"
-                  className="flex-1"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Eliminar
-                </Button>
               </div>
             </div>
           )}

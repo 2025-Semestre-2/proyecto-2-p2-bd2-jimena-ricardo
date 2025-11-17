@@ -1,4 +1,3 @@
-
 -- En WWISJ
 USE WWISJ
 GO
@@ -102,6 +101,7 @@ EXEC sp_CreateUser
     @rol = 'corporativo',
     @hiredate = '2024-01-15',
     @active = 1;
+GO
 
 CREATE OR ALTER PROCEDURE sp_ValidateUserCredentials
     @username NVARCHAR(50),

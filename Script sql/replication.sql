@@ -6,6 +6,11 @@
 --USE WWILM
 GO
 
+DROP SECURITY POLICY Application.FilterCustomersBySalesTerritoryRole
+GO
+DROP FUNCTION Application.DetermineCustomerAccess
+GO
+
 ALTER TABLE [Application].[Cities] SET (SYSTEM_VERSIONING = OFF);
 GO
 ALTER TABLE [Application].[Cities] DROP PERIOD FOR SYSTEM_TIME;
@@ -85,4 +90,3 @@ ALTER TABLE [Warehouse].[StockItems] SET (SYSTEM_VERSIONING = OFF);
 GO 
 ALTER TABLE [Warehouse].[StockItems] DROP PERIOD FOR SYSTEM_TIME;
 GO 
- 
